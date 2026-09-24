@@ -1,0 +1,85 @@
+services:
+  api:
+    build:
+      context: ../apps/api
+    environment:
+      MAP_ENV: development
+      MAP_DEV_AUTH_ENABLED: "true"
+      MAP_CORS_ORIGINS: http://localhost:3000
+      MAP_ARTIFACT_DIR: /app/artifacts
+      MAP_RECORD_DATABASE_PATH: /app/data/playground.sqlite3
+      MAP_TTS_PROVIDER: ${MAP_TTS_PROVIDER:-mock}
+      MAP_ASR_PROVIDER: ${MAP_ASR_PROVIDER:-mock}
+      MAP_CHAT_PROVIDER: ${MAP_CHAT_PROVIDER:-mock}
+      MAP_OCR_PROVIDER: ${MAP_OCR_PROVIDER:-mock}
+      MAP_OLLAMA_BASE_URL: ${MAP_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      MAP_OLLAMA_MODEL: ${MAP_OLLAMA_MODEL:-qwen2.5:3b}
+    ports:
+      - "8000:8000"
+    volumes:
+      - api-artifacts:/app/artifacts
+      - api-records:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../apps/web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: map
+      POSTGRES_USER: map
+      POSTGRES_PASSWORD: map
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U map -d map"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: map
+      MINIO_ROOT_PASSWORD: change-me-now
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  api-artifacts:
+  api-records:
+  postgres-data:
+  redis-data:
+  minio-data:

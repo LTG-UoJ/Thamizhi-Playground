@@ -1,0 +1,10 @@
+{
+  "error": {
+    "code": "QUEUE_FULL",
+    "message": "The TTS queue is at its configured limit.",
+    "request_id": "req_example",
+    "retryable": true,
+    "details": []
+  }
+}
+
