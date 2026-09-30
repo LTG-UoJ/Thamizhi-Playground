@@ -14,6 +14,8 @@ services:
       MAP_OCR_PROVIDER: ${MAP_OCR_PROVIDER:-mock}
       MAP_OLLAMA_BASE_URL: ${MAP_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       MAP_OLLAMA_MODEL: ${MAP_OLLAMA_MODEL:-qwen2.5:3b}
+      MAP_CEYNEWS_CATEGORY_URL: ${MAP_CEYNEWS_CATEGORY_URL:-http://10.10.10.91:8766}
+      MAP_CEYNEWS_HEADLINE_URL: ${MAP_CEYNEWS_HEADLINE_URL:-http://10.10.10.91:8767}
     ports:
       - "8000:8000"
     volumes:

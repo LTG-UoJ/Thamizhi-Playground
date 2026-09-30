@@ -22,7 +22,10 @@ type IconName =
   | "check"
   | "trash"
   | "plus"
-  | "completion";
+  | "completion"
+  | "news-classify"
+  | "news-headline"
+  | "other-tools";
 
 const paths: Record<IconName, React.ReactNode> = {
   home: <><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></>,
@@ -47,6 +50,9 @@ const paths: Record<IconName, React.ReactNode> = {
   trash: <><path d="M3 6h18M8 6V4h8v2M19 6l-1 15H6L5 6M10 11v5M14 11v5"/></>,
   plus: <><path d="M12 5v14M5 12h14"/></>,
   completion: <><path d="M4 6h16M4 10h10M4 14h12M4 18h7"/><path d="M18 15v6M15 18h6"/></>,
+  "news-classify": <><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></>,
+  "news-headline": <><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a4 4 0 0 1-4-4V6"/><path d="M10 7h8M10 11h8M10 15h5"/></>,
+  "other-tools": <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M3 17.5h7M6.5 14v7"/></>,
 };
 
 export function Icon({ name, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {

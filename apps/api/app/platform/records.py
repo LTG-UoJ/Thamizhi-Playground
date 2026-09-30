@@ -89,6 +89,34 @@ MODULES: tuple[dict[str, Any], ...] = (
         "renderer_kind": "compiled_custom",
         "provider_capability": "completion",
     },
+    {
+        "module_id": "news-category",
+        "descriptor_version": "1.0",
+        "capability": "classification",
+        "route_slug": "news-category",
+        "navigation_group": "ceynews_tools",
+        "title_key": "modules.news_category.title",
+        "description_key": "modules.news_category.description",
+        "icon_key": "newspaper",
+        "sort_order": 60,
+        "enabled": True,
+        "renderer_kind": "compiled_custom",
+        "provider_capability": "classification",
+    },
+    {
+        "module_id": "news-headline",
+        "descriptor_version": "1.0",
+        "capability": "generation",
+        "route_slug": "news-headline",
+        "navigation_group": "ceynews_tools",
+        "title_key": "modules.news_headline.title",
+        "description_key": "modules.news_headline.description",
+        "icon_key": "newspaper",
+        "sort_order": 70,
+        "enabled": True,
+        "renderer_kind": "compiled_custom",
+        "provider_capability": "generation",
+    },
 )
 
 
@@ -295,14 +323,18 @@ class RecordStore:
         provider_id: str | None,
         model_id: str | None,
         language: str,
-        policy: RecordingPolicy,
+        policy: RecordingPolicy | None = None,
         interaction_id: str | None = None,
         status: str = "completed",
+        force_save: bool = False,
     ) -> str | None:
-        if not policy.save_history and not policy.improvement_consent:
+        always_save = force_save or module_id in ("news-category", "news-headline")
+        save_hist = always_save or (policy is not None and policy.save_history)
+        imp_consent = policy is not None and policy.improvement_consent
+        if not save_hist and not imp_consent:
             return None
         now = datetime.now(UTC)
-        retention = now + timedelta(days=180 if policy.improvement_consent else 30)
+        retention = now + timedelta(days=180 if imp_consent else 30)
         next_id = interaction_id or str(uuid4())
         async with self._lock:
             self._connection.execute(
@@ -321,8 +353,8 @@ class RecordStore:
                     model_id,
                     language,
                     status,
-                    int(policy.save_history),
-                    int(policy.improvement_consent),
+                    1 if save_hist else 0,
+                    1 if imp_consent else 0,
                     retention.isoformat(),
                     now.isoformat(),
                     now.isoformat(),

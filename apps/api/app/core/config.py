@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     tesseract_command: str = "tesseract"
     espeak_command: str = "espeak-ng"
     cors_origins: str = "http://localhost:3000"
+    ceynews_category_url: str = "http://10.10.10.91:8766"
+    ceynews_headline_url: str = "http://10.10.10.91:8767"
 
     @property
     def allowed_origins(self) -> list[str]:

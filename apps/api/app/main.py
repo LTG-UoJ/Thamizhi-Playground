@@ -13,6 +13,7 @@ from app.core.errors import DomainError, domain_error_handler
 from app.modules.asr.router import router as asr_router
 from app.modules.chat.router import router as chat_router
 from app.modules.completion.router import router as completion_router
+from app.modules.news.router import router as news_router
 from app.modules.ocr.router import router as ocr_router
 from app.modules.tts.router import router as tts_router
 from app.platform.router import router as platform_router
@@ -110,5 +111,13 @@ async def ready() -> dict[str, str]:
     return {"status": "ready"}
 
 
-for capability_router in (platform_router, tts_router, asr_router, chat_router, ocr_router, completion_router):
+for capability_router in (
+    platform_router,
+    tts_router,
+    asr_router,
+    chat_router,
+    ocr_router,
+    completion_router,
+    news_router,
+):
     app.include_router(capability_router, prefix="/api/v1")

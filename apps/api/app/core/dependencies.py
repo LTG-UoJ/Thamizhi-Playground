@@ -4,6 +4,7 @@ from app.core.config import get_settings
 from app.modules.asr.service import ASRService, build_asr_provider
 from app.modules.chat.service import ChatService, build_chat_provider
 from app.modules.completion.service import CompletionService, build_completion_provider
+from app.modules.news.service import NewsService
 from app.modules.ocr.service import OCRService, build_ocr_provider
 from app.modules.tts.service import TTSService, build_tts_provider
 from app.platform.admission import AdmissionController
@@ -20,7 +21,7 @@ class Container:
         self.audit = AuditStore()
         self.idempotency = IdempotencyStore()
         self.admission = AdmissionController(
-            limits={"tts": 500, "asr": 100, "chat": 500, "ocr": 500, "completion": 500}
+            limits={"tts": 500, "asr": 100, "chat": 500, "ocr": 500, "completion": 500, "news": 500}
         )
         self.jobs = JobStore()
         self.artifacts = ArtifactStore(settings.artifact_dir)
@@ -44,6 +45,13 @@ class Container:
         )
         self.completion = CompletionService(
             build_completion_provider(settings), self.admission, self.audit, self.records
+        )
+        self.news = NewsService(
+            category_url=settings.ceynews_category_url,
+            headline_url=settings.ceynews_headline_url,
+            admission=self.admission,
+            audit=self.audit,
+            records=self.records,
         )
 
 

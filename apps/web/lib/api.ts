@@ -1,7 +1,14 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 export type Locale = "en" | "ta-LK";
-export type ModuleId = "chat" | "tts" | "asr" | "ocr" | "completion";
+export type ModuleId =
+  | "chat"
+  | "tts"
+  | "asr"
+  | "ocr"
+  | "completion"
+  | "news-category"
+  | "news-headline";
 
 export type RecordPreferences = {
   saveHistory: boolean;
@@ -213,7 +220,7 @@ export async function complete(
       method: "POST",
       headers: {
         ...authHeaders(consented),
-        ...recordHeaders(preferences),
+        ...recordHeaders({ ...preferences, saveHistory: true }),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ text, ...(model ? { model } : {}) }),
@@ -335,6 +342,58 @@ export async function logout() {
     await fetch(`${API_BASE}/auth/logout`, {
       method: "POST",
       headers: authHeaders(false),
+    }),
+  );
+}
+
+// ── CeyNews tools ────────────────────────────────────────────────────────────
+
+export type NewsClassificationResult = {
+  request_id: string;
+  category: string;
+  provider_id: string;
+  model_id: string;
+  interaction_id?: string;
+};
+
+export type NewsHeadlineResult = {
+  request_id: string;
+  headline: string;
+  provider_id: string;
+  model_id: string;
+  interaction_id?: string;
+};
+
+export async function classifyNews(
+  text: string,
+  preferences?: RecordPreferences,
+): Promise<NewsClassificationResult> {
+  return checked<NewsClassificationResult>(
+    await fetch(`${API_BASE}/news/classify`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(true),
+        ...(preferences ? recordHeaders({ ...preferences, saveHistory: true }) : { "X-Save-History": "true" }),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    }),
+  );
+}
+
+export async function generateNewsHeadline(
+  text: string,
+  preferences?: RecordPreferences,
+): Promise<NewsHeadlineResult> {
+  return checked<NewsHeadlineResult>(
+    await fetch(`${API_BASE}/news/generate-headline`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(true),
+        ...(preferences ? recordHeaders({ ...preferences, saveHistory: true }) : { "X-Save-History": "true" }),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ text }),
     }),
   );
 }
