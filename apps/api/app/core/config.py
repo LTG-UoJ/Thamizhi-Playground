@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     artifact_dir: Path = Path("artifacts")
     record_database_path: Path = Path("data/playground.sqlite3")
     tts_provider: str = "mock"
+    coqui_tts_url: str = "http://thamizhi-xtts:5002"
     asr_provider: str = "external"
     asr_upload_url: str = "http://10.10.10.91:8000/upload?lang=ta"
     asr_ws_url: str = "ws://10.10.10.91:8000/ws/asr"

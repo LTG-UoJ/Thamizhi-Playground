@@ -9,6 +9,7 @@ services:
       MAP_ARTIFACT_DIR: /app/artifacts
       MAP_RECORD_DATABASE_PATH: /app/data/playground.sqlite3
       MAP_TTS_PROVIDER: ${MAP_TTS_PROVIDER:-mock}
+      MAP_COQUI_TTS_URL: ${MAP_COQUI_TTS_URL:-http://thamizhi-xtts:5002}
       MAP_ASR_PROVIDER: ${MAP_ASR_PROVIDER:-mock}
       MAP_CHAT_PROVIDER: ${MAP_CHAT_PROVIDER:-mock}
       MAP_OCR_PROVIDER: ${MAP_OCR_PROVIDER:-mock}

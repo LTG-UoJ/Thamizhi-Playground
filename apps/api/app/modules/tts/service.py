@@ -9,6 +9,8 @@ import wave
 from collections.abc import Callable
 from typing import Protocol
 
+import httpx
+
 from fastapi import BackgroundTasks
 
 from app.core.config import Settings
@@ -24,13 +26,13 @@ from app.platform.records import RecordingPolicy, RecordStore
 class TTSProvider(Protocol):
     provider_id: str
 
-    async def synthesize(self, request: TTSRequest) -> bytes: ...
+    async def synthesize(self, request: TTSRequest, reference_wav: bytes | None = None) -> bytes: ...
 
 
 class MockTTSProvider:
     provider_id = "mock-tts"
 
-    async def synthesize(self, request: TTSRequest) -> bytes:
+    async def synthesize(self, request: TTSRequest, reference_wav: bytes | None = None) -> bytes:
         sample_rate = 16_000
         duration = min(4.0, max(0.5, len(request.text) / 45))
         base = 220 if request.language == "en" else 260
@@ -54,7 +56,7 @@ class EspeakTTSProvider:
     def __init__(self, command: str) -> None:
         self.command = command
 
-    async def synthesize(self, request: TTSRequest) -> bytes:
+    async def synthesize(self, request: TTSRequest, reference_wav: bytes | None = None) -> bytes:
         if not shutil.which(self.command):
             raise DomainError("PROVIDER_UNAVAILABLE", "eSpeak is not installed.", 503, True)
 
@@ -77,10 +79,115 @@ class EspeakTTSProvider:
             raise DomainError("PROVIDER_FAILURE", "TTS synthesis failed.", 502, True) from exc
 
 
+
+class CoquiXTTSProvider:
+    """
+    Adapter between Thamizhi AI Playground and the external
+    Tamil Coqui XTTS server.
+
+    Playground:
+        POST /api/v1/tts/jobs
+
+    This provider forwards the synthesis request to:
+        POST <base_url>/api/tts
+    """
+
+    provider_id = "coqui-xtts"
+
+    def __init__(self, base_url: str) -> None:
+        self.base_url = base_url.rstrip("/")
+
+    async def synthesize(self, request: TTSRequest, reference_wav: bytes | None = None) -> bytes:
+
+        # Translate Playground language IDs to XTTS language IDs.
+        language_id = "ta" if request.language == "ta-LK" else "en"
+
+        # We reuse voice_id for the requested output voice.
+        voice = request.voice.strip().lower()
+
+        if voice not in ("male", "female"):
+            voice = "male"
+
+        payload = {
+            "text": request.text,
+            "language_id": language_id,
+            "voice": voice,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+
+                response = await client.post(
+                    f"{self.base_url}/api/tts",
+                    data=payload,
+                    files={"reference_wav": ("reference.wav", reference_wav, "audio/wav")} if reference_wav is not None else None,
+                )
+
+            response.raise_for_status()
+
+        except httpx.TimeoutException as exc:
+            raise DomainError(
+                "PROVIDER_TIMEOUT",
+                "Coqui XTTS synthesis timed out.",
+                504,
+                True,
+            ) from exc
+
+        except httpx.HTTPStatusError as exc:
+
+            message = (
+                f"Coqui XTTS returned HTTP "
+                f"{exc.response.status_code}."
+            )
+
+            try:
+                detail = exc.response.json()
+                message += f" {detail}"
+            except Exception:
+                pass
+
+            raise DomainError(
+                "PROVIDER_FAILURE",
+                message,
+                502,
+                True,
+            ) from exc
+
+        except httpx.RequestError as exc:
+            raise DomainError(
+                "PROVIDER_UNAVAILABLE",
+                "Could not connect to the Coqui XTTS server.",
+                503,
+                True,
+            ) from exc
+
+        audio = response.content
+
+        if not audio:
+            raise DomainError(
+                "PROVIDER_FAILURE",
+                "Coqui XTTS returned an empty audio response.",
+                502,
+                True,
+            )
+
+        # Basic WAV validation.
+        if not audio.startswith(b"RIFF"):
+            raise DomainError(
+                "PROVIDER_FAILURE",
+                "Coqui XTTS did not return a valid WAV file.",
+                502,
+                True,
+            )
+
+        return audio
+
+
 def build_tts_provider(settings: Settings) -> TTSProvider:
     providers: dict[str, Callable[[], TTSProvider]] = {
         "mock": MockTTSProvider,
         "espeak": lambda: EspeakTTSProvider(settings.espeak_command),
+        "coqui_xtts": lambda: CoquiXTTSProvider(settings.coqui_tts_url),
     }
     try:
         return providers[settings.tts_provider]()
@@ -111,9 +218,10 @@ class TTSService:
         owner_id: str,
         background: BackgroundTasks,
         policy: RecordingPolicy,
+        reference_wav: bytes | None = None,
     ) -> dict[str, str]:
         job = await self.jobs.create("tts", owner_id)
-        background.add_task(self._run, job.job_id, owner_id, request, policy)
+        background.add_task(self._run, job.job_id, owner_id, request, policy, reference_wav)
         return {
             "job_id": job.job_id,
             "status": job.status,
@@ -121,12 +229,12 @@ class TTSService:
         }
 
     async def _run(
-        self, job_id: str, owner_id: str, request: TTSRequest, policy: RecordingPolicy
+        self, job_id: str, owner_id: str, request: TTSRequest, policy: RecordingPolicy, reference_wav: bytes | None = None
     ) -> None:
         try:
             async with self.admission.admit("tts"):
                 await self.jobs.set_running(job_id)
-                audio = await self.provider.synthesize(request)
+                audio = await self.provider.synthesize(request, reference_wav)
                 artifact_id = await self.artifacts.put(audio, ".wav")
                 result = {
                     "artifact_url": f"/api/v1/artifacts/{artifact_id}",
