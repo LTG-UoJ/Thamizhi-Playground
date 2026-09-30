@@ -1,6 +1,26 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
 export type Locale = "en" | "ta-LK";
+function generateIdempotencyKey(): string {
+  // Modern browsers
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
+  ) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  // Fallback for browsers/environments without crypto.randomUUID()
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+    /[xy]/g,
+    (c) => {
+      const r = Math.floor(Math.random() * 16);
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    },
+  );
+}
+
 export type ModuleId = "chat" | "tts" | "asr" | "ocr" | "completion";
 
 export type RecordPreferences = {
@@ -94,9 +114,29 @@ export async function getModules() {
 export async function createTTS(
   text: string,
   language: Locale,
+  voice: "male" | "female",
   consented: boolean,
   preferences: RecordPreferences,
+  referenceWav?: File,
 ) {
+  if (referenceWav) {
+    const body = new FormData();
+    body.append("text", text);
+    body.append("language", language);
+    body.append("voice", voice);
+    body.append("reference_wav", referenceWav);
+    return checked<{ job_id: string; status_url: string }>(
+      await fetch(`${API_BASE}/tts/jobs/upload`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(consented),
+          ...recordHeaders(preferences),
+          "Idempotency-Key": generateIdempotencyKey(),
+        },
+        body,
+      }),
+    );
+  }
   return checked<{ job_id: string; status_url: string }>(
     await fetch(`${API_BASE}/tts/jobs`, {
       method: "POST",
@@ -104,9 +144,16 @@ export async function createTTS(
         ...authHeaders(consented),
         ...recordHeaders(preferences),
         "Content-Type": "application/json",
-        "Idempotency-Key": crypto.randomUUID(),
+        "Idempotency-Key": generateIdempotencyKey(),
       },
-      body: JSON.stringify({ text, language, voice_id: "default", output_format: "wav" }),
+      body: JSON.stringify({
+        text,
+        language,
+        voice,
+        voice_id: "default",
+        speaking_rate: 1.0,
+        output_format: "wav",
+      }),
     }),
   );
 }
@@ -236,7 +283,7 @@ export async function createOCR(
       headers: {
         ...authHeaders(consented),
         ...recordHeaders(preferences),
-        "Idempotency-Key": crypto.randomUUID(),
+        "Idempotency-Key": generateIdempotencyKey(),
       },
       body,
     }),
