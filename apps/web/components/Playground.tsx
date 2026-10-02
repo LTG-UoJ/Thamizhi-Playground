@@ -17,7 +17,7 @@ import { HomePage } from "./HomePage";
 import { Icon, type IconName } from "./Icon";
 import { NewsCategoryPanel } from "./NewsCategoryPanel";
 import { NewsHeadlinePanel } from "./NewsHeadlinePanel";
-import { OCRPanel } from "./OCRPanel";
+import OCRPanel from "./OCRPanel";
 import { TTSPanel } from "./TTSPanel";
 import { UsagePage } from "./UsagePage";
 
@@ -113,7 +113,7 @@ export function Playground() {
         {active === "chat" && <ChatPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("chat", id)} />}
         {active === "tts" && <TTSPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("tts", id)} />}
         {active === "asr" && <ASRPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("asr", id)} />}
-        {active === "ocr" && <OCRPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("ocr", id)} />}
+        {active === "ocr" && <OCRPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id?: string) => used("ocr", id)} />}
         {active === "completion" && <CompletionPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("completion", id)} />}
         {active === "news-category" && <NewsCategoryPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("news-category", id)} />}
         {active === "news-headline" && <NewsHeadlinePanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("news-headline", id)} />}

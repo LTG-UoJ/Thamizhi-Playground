@@ -1,55 +1,374 @@
 "use client";
 
-import Image from "next/image";
-import { useState } from "react";
-import { createOCR, type Locale, type RecordPreferences, waitForJob } from "../lib/api";
-import { ResultFeedback } from "./ResultFeedback";
-import { Status } from "./Status";
+import {
+  ChangeEvent,
+  DragEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
-export function OCRPanel({ locale, enabled, preferences, onUsed }: { locale: Locale; enabled: boolean; preferences: RecordPreferences; onUsed: (interactionId?: string) => void }) {
-  const [file, setFile] = useState<File>();
-  const [preview, setPreview] = useState<string>();
-  const [text, setText] = useState("");
-  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
-  const [message, setMessage] = useState("");
-  const [interactionId, setInteractionId] = useState<string>();
+import {
+  Locale,
+  RecordPreferences,
+  getThamizhiOCRDocxUrl,
+  getThamizhiOCRImageUrl,
+  processThamizhiOCR,
+} from "../lib/api";
 
-  function select(next?: File) {
-    setFile(next);
-    setText("");
+type Props = {
+  locale: Locale;
+  enabled: boolean;
+  preferences: RecordPreferences;
+  onUsed: (interactionId?: string) => void;
+};
+
+export default function OCRPanel({
+  locale,
+  enabled,
+  preferences,
+  onUsed,
+}: Props) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string>("");
+  const [processedImage, setProcessedImage] = useState<string>("");
+
+  const [ocrText, setOcrText] = useState("");
+  const [sessionId, setSessionId] = useState("");
+
+  const [running, setRunning] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [error, setError] = useState("");
+
+  const ta = locale === "ta-LK";
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  function chooseFile(selected: File | null) {
+    if (!selected) return;
+
+    if (!selected.type.startsWith("image/")) {
+      setError(
+        ta
+          ? "தயவுசெய்து ஒரு படக் கோப்பைத் தேர்ந்தெடுக்கவும்."
+          : "Please select an image file.",
+      );
+      return;
+    }
+
     if (preview) URL.revokeObjectURL(preview);
-    setPreview(next ? URL.createObjectURL(next) : undefined);
+
+    setFile(selected);
+    setPreview(URL.createObjectURL(selected));
+
+    setProcessedImage("");
+    setOcrText("");
+    setSessionId("");
+    setError("");
   }
 
-  async function recognise() {
-    if (!file) return;
-    setState("busy");
-    setMessage(locale === "en" ? "Reading image…" : "படம் வாசிக்கப்படுகிறது…");
+  function handleInput(event: ChangeEvent<HTMLInputElement>) {
+    chooseFile(event.target.files?.[0] ?? null);
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDragging(false);
+
+    chooseFile(event.dataTransfer.files?.[0] ?? null);
+  }
+
+  async function runOCR() {
+    if (!enabled) {
+      setError(
+        ta
+          ? "OCR பயன்படுத்த அமர்வுச் செயலாக்கத்தை இயக்கவும்."
+          : "Enable session processing to use OCR.",
+      );
+      return;
+    }
+
+    if (!file) {
+      setError(
+        ta
+          ? "முதலில் ஒரு படத்தை பதிவேற்றவும்."
+          : "Upload an image first.",
+      );
+      return;
+    }
+
+    setRunning(true);
+    setError("");
+    setOcrText("");
+    setProcessedImage("");
+    setSessionId("");
+
     try {
-      const accepted = await createOCR(file, locale, enabled, preferences);
-      const result = await waitForJob<{ text: string; provider_id: string; interaction_id?: string }>(accepted.job_id, 90_000);
-      setText(result.text);
-      setInteractionId(result.interaction_id);
-      onUsed(result.interaction_id);
-      setState("done");
-      setMessage(`${locale === "en" ? "Completed with" : "முடிக்கப்பட்டது"} ${result.provider_id}`);
-    } catch (error) {
-      setState("error");
-      setMessage(error instanceof Error ? error.message : "OCR failed");
+      const result = await processThamizhiOCR(file);
+
+      console.log("ThamizhiOCR response:", result);
+
+      // Exact response fields returned by the OCR Docker backend:
+      // session_id
+      // ocr_text
+      // annotated_image_url
+      // download_docx_url
+
+      const sid =
+        typeof result.session_id === "string"
+          ? result.session_id
+          : "";
+
+      const text =
+        typeof result.ocr_text === "string"
+          ? result.ocr_text
+          : "";
+
+      console.log("OCR RESULT OBJECT:", result);
+      console.log("OCR SESSION:", sid);
+      console.log("OCR TEXT LENGTH:", text.length);
+      console.log("OCR TEXT:", text);
+
+      setSessionId(sid);
+      setOcrText(text);
+
+      if (sid) {
+        setProcessedImage(
+          `${getThamizhiOCRImageUrl(sid)}?t=${Date.now()}`
+        );
+      }
+
+      onUsed();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "OCR processing failed.",
+      );
+    } finally {
+      setRunning(false);
     }
   }
 
+  async function copyText() {
+    if (!ocrText) return;
+
+    try {
+      await navigator.clipboard.writeText(ocrText);
+    } catch {
+      setError(
+        ta
+          ? "உரையை நகலெடுக்க முடியவில்லை."
+          : "Could not copy the OCR text.",
+      );
+    }
+  }
+
+  function downloadDocx() {
+    if (!sessionId) return;
+
+    window.open(
+      getThamizhiOCRDocxUrl(sessionId),
+      "_blank",
+      "noopener,noreferrer",
+    );
+  }
+
   return (
-    <section className="module-panel" aria-labelledby="ocr-title">
-      <div className="panel-heading"><div><span className="step">04</span><h2 id="ocr-title">{locale === "en" ? "Image to text" : "படத்திலிருந்து எழுத்து"}</h2></div><span className="chip">OCR</span></div>
-      <label className="drop-zone">
-        {preview ? <Image src={preview} alt={locale === "en" ? "Selected document preview" : "தேர்ந்தெடுக்கப்பட்ட ஆவணத்தின் முன்னோட்டம்"} width={820} height={520} unoptimized /> : <><span className="upload-mark">↑</span><strong>{locale === "en" ? "Choose a document image" : "ஆவணப் படத்தைத் தேர்ந்தெடுக்கவும்"}</strong><small>PNG · JPEG · WEBP · 15 MiB</small></>}
-        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={!enabled} onChange={(event) => select(event.target.files?.[0])} />
-      </label>
-      <button className="primary" disabled={!enabled || !file || state === "busy"} onClick={recognise}>{locale === "en" ? "Extract text" : "உரையைப் பிரித்தெடு"}</button>
-      <Status state={state} message={message} />
-      {text && <div className="result-card"><span className="result-label">{locale === "en" ? "Recognised text" : "அடையாளம் காணப்பட்ட உரை"}</span><p>{text}</p></div>}
-      <ResultFeedback interactionId={interactionId} locale={locale} />
+    <section className="ocr-workspace">
+      <div className="ocr-heading">
+        <div className="ocr-logo">த</div>
+
+        <div>
+          <h2>ThamizhiOCR</h2>
+
+          <p>
+            {ta
+              ? "தமிழ் உரைப் படத்தை பதிவேற்றவும். உரையைப் பிரித்தெடுத்து பதிவிறக்கக்கூடிய ஆவணத்தை உருவாக்குவோம்."
+              : "Upload a Tamil text image. We'll extract the text and provide a downloadable document."}
+          </p>
+        </div>
+      </div>
+
+      <div className="ocr-grid">
+        <div className="ocr-left">
+          <section className="ocr-card">
+            <div className="ocr-card-title">
+              📁 {ta ? "படத்தை பதிவேற்று" : "Upload Image"}
+            </div>
+
+            <input
+              ref={inputRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={handleInput}
+            />
+
+            <div
+              className={`ocr-dropzone ${
+                dragging ? "dragging" : ""
+              }`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => inputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" ||
+                  event.key === " "
+                ) {
+                  inputRef.current?.click();
+                }
+              }}
+            >
+              {preview ? (
+                <img
+                  src={preview}
+                  alt="Uploaded Tamil document"
+                  className="ocr-upload-preview"
+                />
+              ) : (
+                <div className="ocr-drop-content">
+                  <div className="ocr-upload-icon">⇧</div>
+
+                  <strong>
+                    {ta
+                      ? "கோப்பை இங்கே விடவும்"
+                      : "Drop File Here"}
+                  </strong>
+
+                  <span>- or -</span>
+
+                  <button
+                    type="button"
+                    className="ocr-link-button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      inputRef.current?.click();
+                    }}
+                  >
+                    {ta
+                      ? "பதிவேற்ற கிளிக் செய்யவும்"
+                      : "Click to Upload"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <button
+            type="button"
+            className="ocr-run-button"
+            disabled={!file || running || !enabled}
+            onClick={runOCR}
+          >
+            {running
+              ? ta
+                ? "OCR செயலாக்கப்படுகிறது..."
+                : "Running OCR..."
+              : `🚀 ${ta ? "OCR இயக்கு" : "Run OCR"}`}
+          </button>
+
+          <section className="ocr-card">
+            <div className="ocr-card-title">
+              🖼️ {ta ? "செயலாக்கப்பட்ட படம்" : "Processed Image"}
+            </div>
+
+            <div className="ocr-processed">
+              {processedImage ? (
+                <img
+                  src={processedImage}
+                  alt="OCR processed result"
+                  onError={() => setProcessedImage("")}
+                />
+              ) : (
+                <div className="ocr-placeholder">
+                  ▧
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <div className="ocr-right">
+          <section className="ocr-card ocr-result-card">
+            <div className="ocr-card-title ocr-result-title">
+              <span>
+                📄 {ta ? "OCR முடிவு" : "OCR Result"}
+              </span>
+
+              <button
+                type="button"
+                className="ocr-copy-button"
+                disabled={!ocrText}
+                onClick={copyText}
+                title="Copy OCR text"
+              >
+                ⧉
+              </button>
+            </div>
+
+            <textarea
+              value={ocrText}
+              onChange={(event) =>
+                setOcrText(event.target.value)
+              }
+              placeholder={
+                ta
+                  ? "OCR உரை இங்கே தோன்றும்..."
+                  : "OCR result will appear here..."
+              }
+            />
+          </section>
+
+          <section className="ocr-card">
+            <div className="ocr-card-title">
+              📥{" "}
+              {ta
+                ? "இறுதி DOCX பதிவிறக்கம்"
+                : "Download Final DOCX"}
+            </div>
+
+            <div className="ocr-download-area">
+              <button
+                type="button"
+                className="ocr-download-button"
+                disabled={!sessionId}
+                onClick={downloadDocx}
+              >
+                📄{" "}
+                {ta
+                  ? "DOCX பதிவிறக்கு"
+                  : "Download DOCX"}
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {file && (
+        <div className="ocr-file-name">
+          {file.name}
+        </div>
+      )}
+
+      {error && (
+        <div className="ocr-error" role="alert">
+          {error}
+        </div>
+      )}
     </section>
   );
 }

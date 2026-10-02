@@ -437,3 +437,60 @@ export async function generateNewsHeadline(
     }),
   );
 }
+
+
+// ============================================================================
+// ThamizhiOCR — browser -> Next.js proxy -> OCR backend
+// ============================================================================
+
+export type ThamizhiOCRResult = {
+  session_id: string;
+  ocr_text: string;
+  annotated_image_url: string;
+  download_docx_url: string;
+};
+
+export async function processThamizhiOCR(
+  file: File,
+): Promise<ThamizhiOCRResult> {
+  const body = new FormData();
+  body.append("file", file);
+
+  // IMPORTANT:
+  // Browser talks ONLY to Next.js.
+  // Next.js talks to the OCR backend.
+  const response = await fetch("/api/ocr/process", {
+    method: "POST",
+    body,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let message = `OCR failed (${response.status})`;
+
+    try {
+      const data = await response.json();
+      message =
+        data?.detail ??
+        data?.error?.message ??
+        data?.error ??
+        message;
+    } catch {}
+
+    throw new Error(message);
+  }
+
+  return await response.json();
+}
+
+export function getThamizhiOCRImageUrl(
+  sessionId: string,
+): string {
+  return `/api/ocr/image/${encodeURIComponent(sessionId)}`;
+}
+
+export function getThamizhiOCRDocxUrl(
+  sessionId: string,
+): string {
+  return `/api/ocr/docx/${encodeURIComponent(sessionId)}`;
+}
