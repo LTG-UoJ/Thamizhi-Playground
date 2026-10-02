@@ -16,3 +16,8 @@ artifacts/
 .DS_Store
 .webui_secret_key
 docs/~$*
+
+# Local environment configuration
+apps/web/.env.local
+apps/web/.env.local.*
+apps/api/.env
