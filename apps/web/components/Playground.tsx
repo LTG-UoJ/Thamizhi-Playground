@@ -40,6 +40,10 @@ function isModuleId(value: string): value is ModuleId {
   return ["chat", "tts", "asr", "ocr", "completion"].includes(value);
 }
 
+function hasRenderer(value: string): boolean {
+  return isModuleId(value) || value === "news-category" || value === "news-headline";
+}
+
 
 export function Playground() {
   const [locale, setLocale] = useState<Locale>("en");
@@ -61,8 +65,10 @@ export function Playground() {
   const activeDescriptor = useMemo(() => modules.find((module) => module.module_id === active), [modules, active]);
   const pageTitle = labels[locale][active] ?? activeDescriptor?.module_id ?? "Thamizhi AI";
   function navigate(page: PageId) { setActive(page); setMenuOpen(false); }
-  function used(moduleId: ModuleId, interactionId?: string) {
-    setModulesUsed((current) => current.includes(moduleId) ? current : [...current, moduleId]);
+  function used(moduleId: PageId, interactionId?: string) {
+    if (isModuleId(moduleId)) {
+      setModulesUsed((current) => current.includes(moduleId) ? current : [...current, moduleId]);
+    }
     if (interactionId) setHistoryRefresh((current) => current + 1);
   }
 
@@ -79,7 +85,7 @@ export function Playground() {
           <NavItem id="activity" label={labels[locale].activity} icon="history" active={active} onSelect={navigate} />
         </div>
         <div className="nav-group"><span>{locale === "en" ? "AI modules" : "AI தொகுதிகள்"}</span>
-          {modules.map((module) => <NavItem key={module.module_id} id={module.module_id as PageId} label={isModuleId(module.module_id) ? labels[locale][module.module_id] : module.module_id} icon={(isModuleId(module.module_id) ? module.module_id : "plus") as IconName} active={active} onSelect={navigate} />)}
+          {modules.filter((m) => m.module_id !== "news-category" && m.module_id !== "news-headline").map((module) => <NavItem key={module.module_id} id={module.module_id as PageId} label={isModuleId(module.module_id) ? labels[locale][module.module_id] : module.module_id} icon={(isModuleId(module.module_id) ? module.module_id : "plus") as IconName} active={active} onSelect={navigate} />)}
         </div>
         <div className="nav-group"><span>{locale === "en" ? "Other Tools" : "பிற கருவிகள்"}</span>
           <NavItem id="news-category" label={labels[locale]["news-category"]} icon="news-classify" active={active} onSelect={navigate} />
@@ -101,7 +107,7 @@ export function Playground() {
         <label><input type="checkbox" checked={preferences.improvementConsent} onChange={(event) => setPreferences(() => ({ saveHistory: event.target.checked || preferences.saveHistory, improvementConsent: event.target.checked }))} /><span><strong>{locale === "en" ? "Use saved results for improvement" : "மேம்பாட்டிற்குச் சேமித்த முடிவுகளைப் பயன்படுத்து"}</strong><small>{locale === "en" ? "Separate, revocable opt-in. Never enables model training automatically." : "தனியான, திரும்பப் பெறக்கூடிய ஒப்புதல். மாதிரிப் பயிற்சியைத் தானாக இயக்காது."}</small></span></label>
       </section>}
       <div className="content-canvas">
-        {active === "home" && <HomePage locale={locale} modules={modules} onOpen={(id) => isModuleId(id) && navigate(id)} />}
+        {active === "home" && <HomePage locale={locale} modules={modules.filter((m) => m.module_id !== "news-category" && m.module_id !== "news-headline")} onOpen={(id) => isModuleId(id) && navigate(id)} />}
         {active === "usage" && <UsagePage locale={locale} />}
         {active === "activity" && <ActivityPage locale={locale} refreshKey={historyRefresh} />}
         {active === "chat" && <ChatPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("chat", id)} />}
@@ -109,10 +115,10 @@ export function Playground() {
         {active === "asr" && <ASRPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("asr", id)} />}
         {active === "ocr" && <OCRPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("ocr", id)} />}
         {active === "completion" && <CompletionPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("completion", id)} />}
-        {active === "news-category" && <NewsCategoryPanel locale={locale} />}
-        {active === "news-headline" && <NewsHeadlinePanel locale={locale} />}
-        {activeDescriptor && !isModuleId(activeDescriptor.module_id) && <div className="empty-state"><Icon name="plus" className="empty-icon" /><h2>{activeDescriptor.module_id}</h2><p>This registered module needs a renderer.</p></div>}
-        {!consent && isModuleId(active) && <div className="consent-banner" role="status"><Icon name="shield" /><span>{locale === "en" ? "Enable session processing in Data controls to use this module." : "இந்தத் தொகுதியைப் பயன்படுத்த தரவுக் கட்டுப்பாடுகளில் அமர்வுச் செயலாக்கத்தை இயக்கவும்."}</span></div>}
+        {active === "news-category" && <NewsCategoryPanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("news-category", id)} />}
+        {active === "news-headline" && <NewsHeadlinePanel locale={locale} enabled={consent} preferences={preferences} onUsed={(id) => used("news-headline", id)} />}
+        {activeDescriptor && !hasRenderer(activeDescriptor.module_id) && <div className="empty-state"><Icon name="plus" className="empty-icon" /><h2>{activeDescriptor.module_id}</h2><p>This registered module needs a renderer.</p></div>}
+        {!consent && hasRenderer(active) && <div className="consent-banner" role="status"><Icon name="shield" /><span>{locale === "en" ? "Enable session processing in Data controls to use this module." : "இந்தத் தொகுதியைப் பயன்படுத்த தரவுக் கட்டுப்பாடுகளில் அமர்வுச் செயலாக்கத்தை இயக்கவும்."}</span></div>}
       </div>
     </section>
     {feedbackOpen && <FeedbackDialog locale={locale} modulesUsed={modulesUsed} onCancel={() => setFeedbackOpen(false)} onSignedOut={() => { setFeedbackOpen(false); setSignedIn(false); }} />}

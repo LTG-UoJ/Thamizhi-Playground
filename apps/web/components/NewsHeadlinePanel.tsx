@@ -6,10 +6,12 @@ import { Status } from "./Status";
 
 export function NewsHeadlinePanel({
   locale,
+  enabled = true,
   preferences,
   onUsed,
 }: {
   locale: Locale;
+  enabled?: boolean;
   preferences?: RecordPreferences;
   onUsed?: (id?: string) => void;
 }) {
@@ -56,7 +58,7 @@ export function NewsHeadlinePanel({
     <section className="module-panel" aria-labelledby="news-headline-title">
       <div className="panel-heading">
         <div>
-          <span className="step">N2</span>
+          {/* <span className="step">N2</span> */}
           <h2 id="news-headline-title">
             {locale === "en" ? "News Headline Generation" : "செய்தித் தலைப்பு உருவாக்கம்"}
           </h2>
@@ -66,25 +68,26 @@ export function NewsHeadlinePanel({
 
       <p className="panel-description">
         {locale === "en"
-          ? "Paste a Tamil news article and the model will generate a concise headline for it."
-          : "தமிழ் செய்திக் கட்டுரையை ஒட்டவும், மாதிரி அதற்கு ஒரு சுருக்கமான தலைப்பை உருவாக்கும்."}
+          ? "Paste a Tamil, Sinhala, or English news article, and the model will generate a concise headline for it."
+          : "தமிழ், சிங்களம் அல்லது ஆங்கில செய்திக் கட்டுரையை ஒட்டவும். மாதிரி அதற்கு ஒரு சுருக்கமான தலைப்பை உருவாக்கும்."}
       </p>
 
       <form className="completion-form" onSubmit={generate}>
         <div className="field-group">
           <label htmlFor="news-headline-input" className="field-label">
-            {locale === "en" ? "News article" : "செய்திக் கட்டுரை"}
+            {locale === "en" ? "News article content" : "செய்திக் கட்டுரை உள்ளடக்கம்"}
           </label>
           <textarea
             id="news-headline-input"
             className="completion-textarea"
             rows={8}
             value={input}
+            disabled={!enabled || state === "busy"}
             onChange={(event) => handleInputChange(event.target.value)}
             placeholder={
               locale === "en"
-                ? "Paste the Tamil news article here…\n\nExample:\nமாற்றுத்திறனாளிகளின் விளையாட்டுத் திறனையும் மன உறுதியையும் வெளிப்படுத்தும் வகையில், புத்தளம் மாவட்ட மாற்றுத்திறனாளிகளின் மெய்வல்லுநர் விளையாட்டு விழா மிகுந்த உற்சாகத்துடன் நடைபெற்றது."
-                : "தமிழ் செய்தியை இங்கே ஒட்டவும்…"
+                ? "Paste the news article content here…\n\nExample:\nமாற்றுத்திறனாளிகளின் விளையாட்டுத் திறனையும் மன உறுதியையும் வெளிப்படுத்தும் வகையில், புத்தளம் மாவட்ட மாற்றுத்திறனாளிகளின் மெய்வல்லுநர் விளையாட்டு விழா மிகுந்த உற்சாகத்துடன் நடைபெற்றது."
+                : "செய்திக் கட்டுரையின் உள்ளடக்கத்தை இங்கே ஒட்டவும்…\n\nஉதாரணமாக:\nமாற்றுத்திறனாளிகளின் விளையாட்டுத் திறனையும் மன உறுதியையும் வெளிப்படுத்தும் வகையில், புத்தளம் மாவட்ட மாற்றுத்திறனாளிகளின் மெய்வல்லுநர் விளையாட்டு விழா மிகுந்த உற்சாகத்துடன் நடைபெற்றது."
             }
           />
         </div>
@@ -93,7 +96,7 @@ export function NewsHeadlinePanel({
           id="news-headline-submit"
           type="submit"
           className="primary"
-          disabled={!input.trim() || state === "busy"}
+          disabled={!enabled || !input.trim() || state === "busy"}
         >
           {state === "busy"
             ? locale === "en"

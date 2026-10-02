@@ -5,18 +5,20 @@ import { classifyNews, type Locale, type RecordPreferences } from "../lib/api";
 import { Status } from "./Status";
 
 const CATEGORY_LABELS: Record<string, { en: string; ta: string }> = {
-  Local:         { en: "Local",         ta: "உள்நாட்டு"     },
-  International: { en: "International", ta: "சர்வதேச"        },
-  Sports:        { en: "Sports",        ta: "விளையாட்டு"     },
-  Business:      { en: "Business",      ta: "வணிகம்"         },
+  Local: { en: "Local", ta: "உள்நாட்டு" },
+  International: { en: "International", ta: "சர்வதேச" },
+  Sports: { en: "Sports", ta: "விளையாட்டு" },
+  Business: { en: "Business", ta: "வணிகம்" },
 };
 
 export function NewsCategoryPanel({
   locale,
+  enabled = true,
   preferences,
   onUsed,
 }: {
   locale: Locale;
+  enabled?: boolean;
   preferences?: RecordPreferences;
   onUsed?: (id?: string) => void;
 }) {
@@ -62,15 +64,15 @@ export function NewsCategoryPanel({
   const categoryLabel =
     category !== undefined
       ? (locale === "en"
-          ? (CATEGORY_LABELS[category]?.en ?? category)
-          : (CATEGORY_LABELS[category]?.ta ?? category))
+        ? (CATEGORY_LABELS[category]?.en ?? category)
+        : (CATEGORY_LABELS[category]?.ta ?? category))
       : undefined;
 
   return (
     <section className="module-panel" aria-labelledby="news-category-title">
       <div className="panel-heading">
         <div>
-          <span className="step">N1</span>
+          {/* <span className="step">N1</span> */}
           <h2 id="news-category-title">
             {locale === "en" ? "News Category Classification" : "செய்தி வகைப்படுத்தல்"}
           </h2>
@@ -80,25 +82,26 @@ export function NewsCategoryPanel({
 
       <p className="panel-description">
         {locale === "en"
-          ? "Paste a Tamil news article and the model will predict its category: Local, International, Sports, or Business."
-          : "தமிழ் செய்திக் கட்டுரையை ஒட்டவும், மாதிரி அதன் வகையை முன்னறிவிக்கும்: உள்நாட்டு, சர்வதேச, விளையாட்டு அல்லது வணிகம்."}
+          ? "Paste a Tamil, Sinhala, or English news article, and the model will predict its category: Local, International, Sports, or Business."
+          : "தமிழ், சிங்களம் அல்லது ஆங்கில செய்திக் கட்டுரையை ஒட்டவும். மாதிரி அதன் வகையை முன்னறிவிக்கும்: உள்நாட்டு, சர்வதேச, விளையாட்டு அல்லது வணிகம்."}
       </p>
 
       <form className="completion-form" onSubmit={classify}>
         <div className="field-group">
           <label htmlFor="news-category-input" className="field-label">
-            {locale === "en" ? "News article" : "செய்திக் கட்டுரை"}
+            {locale === "en" ? "News article content" : "செய்திக் கட்டுரை உள்ளடக்கம்"}
           </label>
           <textarea
             id="news-category-input"
             className="completion-textarea"
             rows={7}
             value={input}
+            disabled={!enabled || state === "busy"}
             onChange={(event) => handleInputChange(event.target.value)}
             placeholder={
               locale === "en"
-                ? "Paste the Tamil news article here…\n\nExample:\nஇலங்கை கிரிக்கெட் அணி இன்று முக்கியமான போட்டியில் விளையாடுகிறது."
-                : "தமிழ் செய்தியை இங்கே ஒட்டவும்…"
+                ? "Paste the news article content here…\n\nExample:\nஇலங்கை கிரிக்கெட் அணி இன்று முக்கியமான போட்டியில் விளையாடுகிறது."
+                : "செய்திக் கட்டுரையின் உள்ளடக்கத்தை இங்கே ஒட்டவும்…\n\nஉதாரணமாக:\nஇலங்கை கிரிக்கெட் அணி இன்று முக்கியமான போட்டியில் விளையாடுகிறது."
             }
           />
         </div>
@@ -107,7 +110,7 @@ export function NewsCategoryPanel({
           id="news-category-submit"
           type="submit"
           className="primary"
-          disabled={!input.trim() || state === "busy"}
+          disabled={!enabled || !input.trim() || state === "busy"}
         >
           {state === "busy"
             ? locale === "en"

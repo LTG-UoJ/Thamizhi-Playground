@@ -79,8 +79,8 @@ export function CompletionPanel({
 
       <p className="panel-description">
         {locale === "en"
-          ? "Enter the beginning of a sentence or paragraph and let the trilingual model continue it."
-          : "ஒரு வாக்கியம் அல்லது பத்தியின் தொடக்கத்தை உள்ளிடுங்கள், மூவொழுக்க மாதிரி அதைத் தொடரும்."}
+          ? "Enter the beginning of a sentence or paragraph and let the model continue it."
+          : "ஒரு வாக்கியம் அல்லது பந்தியின் தொடக்கத்தை உள்ளிடுங்கள், மாதிரி அதைத் தொடரும்."}
       </p>
 
       <form className="completion-form" onSubmit={generate}>
