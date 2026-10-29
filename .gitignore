@@ -21,3 +21,28 @@ docs/~$*
 apps/web/.env.local
 apps/web/.env.local.*
 apps/api/.env
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+!.env.sample
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.sample
+
+# Python virtual environments
+venv/
+.venv/
+env/
+myenv/
+myenv-del/
+**/venv/
+**/.venv/
+**/site-packages/
+
+# Model checkpoints
+*.pth
+*.pt
+*.ckpt

@@ -459,7 +459,7 @@ export async function processThamizhiOCR(
   // IMPORTANT:
   // Browser talks ONLY to Next.js.
   // Next.js talks to the OCR backend.
-  const response = await fetch("/api/ocr/process", {
+  const response = await fetch("/playground/api/ocr/process", {
     method: "POST",
     body,
     cache: "no-store",
@@ -475,7 +475,7 @@ export async function processThamizhiOCR(
         data?.error?.message ??
         data?.error ??
         message;
-    } catch {}
+    } catch { /* Ignore non-JSON error responses. */ }
 
     throw new Error(message);
   }
@@ -486,11 +486,11 @@ export async function processThamizhiOCR(
 export function getThamizhiOCRImageUrl(
   sessionId: string,
 ): string {
-  return `/api/ocr/image/${encodeURIComponent(sessionId)}`;
+  return `/playground/api/ocr/image/${encodeURIComponent(sessionId)}`;
 }
 
 export function getThamizhiOCRDocxUrl(
   sessionId: string,
 ): string {
-  return `/api/ocr/docx/${encodeURIComponent(sessionId)}`;
+  return `/playground/api/ocr/docx/${encodeURIComponent(sessionId)}`;
 }

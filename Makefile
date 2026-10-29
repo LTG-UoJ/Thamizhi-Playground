@@ -24,3 +24,14 @@ test:
 check:
 	cd apps/api && uv run ruff check . && uv run mypy app
 	cd apps/web && pnpm lint && pnpm typecheck
+
+.PHONY: api-prod web-build web-prod
+
+api-prod:
+	cd apps/api && uv run uvicorn app.main:app --host 127.0.0.1 --port 8002
+
+web-build:
+	cd apps/web && pnpm build
+
+web-prod:
+	cd apps/web && pnpm start

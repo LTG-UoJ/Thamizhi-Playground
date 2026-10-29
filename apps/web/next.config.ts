@@ -6,10 +6,12 @@ const HEADLINE_BASE =
   process.env.CEYNEWS_HEADLINE_API_URL ?? "http://10.10.10.91:8767";
 
 const nextConfig: NextConfig = {
+  basePath: "/playground",
   output: "standalone",
   poweredByHeader: false,
   async rewrites() {
     return [
+      { source: "/api/v1/:path*", destination: "http://127.0.0.1:8002/api/v1/:path*" },
       {
         source: "/api/ceynews/classify",
         destination: `${CATEGORY_BASE}/classify`,
@@ -18,6 +20,10 @@ const nextConfig: NextConfig = {
         source: "/api/ceynews/generate-headline",
         destination: `${HEADLINE_BASE}/generate-headline`,
       },
+      { source: "/backend/asr/:path*", destination: "http://10.10.10.91:8000/:path*" },
+      { source: "/backend/xtts/:path*", destination: "http://10.10.10.91:5002/:path*" },
+      { source: "/backend/ocr/:path*", destination: "http://10.10.10.91:8010/:path*" },
+      { source: "/backend/tts/:path*", destination: "http://10.10.10.91:5003/:path*" },
     ];
   },
 };

@@ -26,7 +26,6 @@ type Props = {
 export default function OCRPanel({
   locale,
   enabled,
-  preferences,
   onUsed,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);

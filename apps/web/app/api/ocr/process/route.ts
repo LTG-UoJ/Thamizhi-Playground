@@ -49,10 +49,10 @@ export async function POST(request: NextRequest) {
       const sid = encodeURIComponent(result.session_id);
 
       result.annotated_image_url =
-        `/api/ocr/image/${sid}`;
+        `/playground/api/ocr/image/${sid}`;
 
       result.download_docx_url =
-        `/api/ocr/docx/${sid}`;
+        `/playground/api/ocr/docx/${sid}`;
     }
 
     return NextResponse.json(result);
