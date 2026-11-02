@@ -55,3 +55,21 @@ node_modules/
 .env.*
 !.env.example
 !.env.*.example
+
+# LTG environment examples
+!.env.sample
+!**/.env.example
+!**/.env.sample
+
+# Python environments
+venv/
+env/
+myenv/
+myenv-del/
+**/venv/
+**/.venv/
+**/site-packages/
+
+# Backup files
+*.backup
+*.bak2

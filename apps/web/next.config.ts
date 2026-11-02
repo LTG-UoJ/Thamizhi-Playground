@@ -7,7 +7,8 @@ const HEADLINE_BASE =
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  env: { NEXT_PUBLIC_BASE_PATH: "" },
+  basePath: "/playground",
+  env: { NEXT_PUBLIC_BASE_PATH: "/playground" },
   output: "standalone",
   poweredByHeader: false,
   async rewrites() {
