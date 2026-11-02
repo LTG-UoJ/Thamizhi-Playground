@@ -48,3 +48,10 @@ node_modules/
 *.pt
 *.ckpt
 *.safetensors
+
+*.bak
+*.before-*
+.env
+.env.*
+!.env.example
+!.env.*.example
