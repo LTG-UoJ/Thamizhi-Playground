@@ -26,7 +26,6 @@ type Props = {
 export default function OCRPanel({
   locale,
   enabled,
-  preferences,
   onUsed,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -186,7 +185,7 @@ export default function OCRPanel({
         <div className="ocr-logo">த</div>
 
         <div>
-          <h2>ThamizhiOCR</h2>
+          <h2>{ta ? "படத்திலிருந்து உரை" : "Image to Text"}</h2>
 
           <p>
             {ta

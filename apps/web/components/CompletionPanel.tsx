@@ -1,4 +1,5 @@
 "use client";
+import { ResearchPaper } from "./ResearchPaper";
 
 import { FormEvent, useState } from "react";
 import { complete, type CompletionResult, type Locale, type RecordPreferences } from "../lib/api";
@@ -71,7 +72,7 @@ export function CompletionPanel({
         <div>
           <span className="step">05</span>
           <h2 id="completion-title">
-            {locale === "en" ? "Text completion" : "உரைத் தொடர்ச்சி"}
+            {locale === "en" ? "Text Completion" : "உரைத் தொடர்ச்சி"}
           </h2>
         </div>
         <span className="chip">COMPLETION</span>
@@ -153,6 +154,7 @@ export function CompletionPanel({
       )}
 
       <ResultFeedback interactionId={interactionId} locale={locale} />
-    </section>
+          <ResearchPaper feature="completion" locale={locale} />
+</section>
   );
 }

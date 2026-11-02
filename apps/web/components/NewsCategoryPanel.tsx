@@ -1,4 +1,5 @@
 "use client";
+import { ResearchPaper } from "./ResearchPaper";
 
 import { FormEvent, useState } from "react";
 import { classifyNews, type Locale, type RecordPreferences } from "../lib/api";
@@ -86,6 +87,15 @@ export function NewsCategoryPanel({
           : "தமிழ், சிங்களம் அல்லது ஆங்கில செய்திக் கட்டுரையை ஒட்டவும். மாதிரி அதன் வகையை முன்னறிவிக்கும்: உள்நாட்டு, சர்வதேச, விளையாட்டு அல்லது வணிகம்."}
       </p>
 
+      <div className="news-category-options">
+        <strong>{locale === "en" ? "Available categories" : "செய்தி வகைகள்"}</strong>
+        <div className="news-category-badges">
+          <span>Local</span>
+          <span>International</span>
+          <span>Sports</span>
+          <span>Business</span>
+        </div>
+      </div>
       <form className="completion-form" onSubmit={classify}>
         <div className="field-group">
           <label htmlFor="news-category-input" className="field-label">
@@ -136,6 +146,7 @@ export function NewsCategoryPanel({
           </div>
         </div>
       )}
-    </section>
+          <ResearchPaper feature="news-category" locale={locale} />
+</section>
   );
 }

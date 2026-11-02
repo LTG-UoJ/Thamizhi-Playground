@@ -16,6 +16,8 @@ from app.modules.completion.router import router as completion_router
 from app.modules.news.router import router as news_router
 from app.modules.ocr.router import router as ocr_router
 from app.modules.tts.router import router as tts_router
+from app.platform.accounts_router import router as accounts_router
+from app.platform.auth_router import router as auth_router
 from app.platform.router import router as platform_router
 
 settings = get_settings()
@@ -23,6 +25,9 @@ app = FastAPI(
     title="Modular AI Playground API",
     version="0.2.0",
     description="Modular TTS, ASR, chat, and OCR gateway based on specification v1.7.",
+    docs_url="/docs" if settings.environment == "development" else None,
+    redoc_url=None,
+    openapi_url="/openapi.json" if settings.environment == "development" else None,
 )
 app.add_middleware(
     CORSMiddleware,
@@ -31,6 +36,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=[
         "Content-Type",
+        "Authorization",
         "Idempotency-Key",
         "X-User-ID",
         "X-Consent-Granted",
@@ -113,6 +119,10 @@ async def ready() -> dict[str, str]:
 
 for capability_router in (
     platform_router,
+    accounts_router,
+    auth_router,
+    accounts_router,
+    auth_router,
     tts_router,
     asr_router,
     chat_router,

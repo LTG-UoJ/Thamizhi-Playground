@@ -328,7 +328,7 @@ class RecordStore:
         status: str = "completed",
         force_save: bool = False,
     ) -> str | None:
-        always_save = force_save or module_id in ("news-category", "news-headline")
+        always_save = force_save
         save_hist = always_save or (policy is not None and policy.save_history)
         imp_consent = policy is not None and policy.improvement_consent
         if not save_hist and not imp_consent:
@@ -363,11 +363,21 @@ class RecordStore:
             self._connection.commit()
         return next_id
 
+    async def purge_expired_interactions(self) -> int:
+        """Delete saved interactions after their retention period."""
+        async with self._lock:
+            cursor = self._connection.execute(
+                "DELETE FROM inference_interactions WHERE retention_expires_at <= ?",
+                (datetime.now(UTC).isoformat(),),
+            )
+            self._connection.commit()
+            return cursor.rowcount
+
     async def list_interactions(
         self, user_id: str, *, module_id: str | None = None, limit: int = 100
     ) -> list[dict[str, Any]]:
-        query = "SELECT * FROM inference_interactions WHERE user_id = ?"
-        params: list[Any] = [user_id]
+        query = "SELECT * FROM inference_interactions WHERE user_id = ? AND retention_expires_at > ?"
+        params: list[Any] = [user_id, datetime.now(UTC).isoformat()]
         if module_id:
             query += " AND module_id = ?"
             params.append(module_id)
@@ -375,6 +385,37 @@ class RecordStore:
         params.append(min(limit, 100))
         async with self._lock:
             rows = self._connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    async def list_admin_activity(
+        self, *, module_id: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        query = ("SELECT interaction_id, user_id, module_id, provider_id, "
+                 "model_id, language, status, save_history, "
+                 "improvement_consent, created_at "
+                 "FROM inference_interactions WHERE retention_expires_at > ?")
+        params: list[Any] = [datetime.now(UTC).isoformat()]
+        if module_id:
+            query += " AND module_id = ?"
+            params.append(module_id)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(min(limit, 100))
+        async with self._lock:
+            rows = self._connection.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    async def list_admin_api_history(
+        self, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        query = (
+            "SELECT event_id, user_id, method, route, status_code, "
+            "latency_ms, occurred_at FROM access_events WHERE " + self.main_inference_filter() + " "
+            "ORDER BY occurred_at DESC LIMIT ?"
+        )
+        async with self._lock:
+            rows = self._connection.execute(
+                query, (min(limit, 100),)
+            ).fetchall()
         return [dict(row) for row in rows]
 
     async def delete_interaction(self, user_id: str, interaction_id: str) -> None:
@@ -451,29 +492,38 @@ class RecordStore:
             self._connection.commit()
         return feedback_id
 
+    @staticmethod
+    def main_inference_filter() -> str:
+        routes = (
+            "/api/v1/tts/jobs",
+            "/api/v1/tts/jobs/upload",
+            "/api/v1/asr/transcriptions",
+            "/api/v1/chat/completions",
+            "/api/v1/ocr/jobs",
+            "/api/v1/completion/completions",
+            "/api/v1/news/classify",
+            "/api/v1/news/generate-headline",
+        )
+        quoted = ", ".join(chr(39) + route + chr(39) for route in routes)
+        return "method = " + chr(39) + "POST" + chr(39) + " AND route IN (" + quoted + ")"
+
     async def usage_summary(
         self, user_id: str, *, module_id: str | None = None
     ) -> dict[str, Any]:
-        clauses = [
-            "user_id = ?",
-            (
-                "(route LIKE '%/tts/%' OR route LIKE '%/asr/%' OR "
-                "route LIKE '%/chat/%' OR route LIKE '%/ocr/%' OR "
-                "route LIKE '%/completion/%')"
-            ),
-        ]
-        params: list[Any] = [user_id]
+        # Aggregate all recorded requests for administrators.
+        clauses: list[str] = [self.main_inference_filter()]
+        params: list[Any] = []
         if module_id:
             clauses.append("route LIKE ?")
             params.append(f"%/{module_id}/%")
-        where = " AND ".join(clauses)
+        where = "WHERE " + " AND ".join(clauses) if clauses else ""
         async with self._lock:
             totals = self._connection.execute(
                 f"""SELECT COUNT(*) AS requests,
                     SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END) AS successful,
                     SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors,
                     COALESCE(AVG(latency_ms), 0) AS average_latency_ms
-                    FROM access_events WHERE {where}""",
+                    FROM access_events {where}""",
                 params,
             ).fetchone()
             rows = self._connection.execute(
@@ -482,7 +532,7 @@ class RecordStore:
                     SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) AS errors,
                     ROUND(AVG(latency_ms), 2) AS average_latency_ms,
                     MAX(occurred_at) AS last_used_at
-                    FROM access_events WHERE {where}
+                    FROM access_events {where}
                     GROUP BY route ORDER BY requests DESC, route""",
                 params,
             ).fetchall()
@@ -519,5 +569,5 @@ class RecordStore:
 def policy_from_headers(save_history: str | None, improvement_consent: str | None) -> RecordingPolicy:
     return RecordingPolicy(
         save_history=(save_history or "false").lower() == "true",
-        improvement_consent=(improvement_consent or "false").lower() == "true",
+        improvement_consent=(save_history or "false").lower() == "true" and (improvement_consent or "false").lower() == "true",
     )

@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+import { getToken } from "./auth";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/api/v1`;
 
 export type Locale = "en" | "ta-LK";
 function generateIdempotencyKey(): string {
@@ -45,6 +46,7 @@ export type ModuleDescriptor = {
 
 export type Interaction = {
   interaction_id: string;
+  user_id?: string;
   module_id: ModuleId;
   query_text?: string;
   answer_text?: string;
@@ -85,11 +87,28 @@ export type ExperienceFeedback = {
 
 type ApiError = { error?: { code?: string; message?: string } };
 
-const authHeaders = (consented = true): HeadersInit => ({
-  "X-User-ID": "local-demo-user",
-  "X-Consent-Granted": String(consented),
-  "X-Roles": "user",
-});
+// Dev-only account switch (removed from production builds).
+// In the browser console:  localStorage.setItem("dev_user", "admin1"); location.reload()   (admin status comes from the admins table)
+function devOverride(key: string): string | null {
+  if (process.env.NODE_ENV === "production" || typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+const authHeaders = (consented = true): HeadersInit => {
+  const token = getToken();
+  const headers: Record<string, string> = { "X-Consent-Granted": String(consented) };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    headers["X-User-ID"] =
+      devOverride("dev_user") ?? process.env.NEXT_PUBLIC_DEV_USER_ID ?? "local-demo-user";
+  }
+  return headers;
+};
 
 const recordHeaders = (preferences: RecordPreferences): HeadersInit => ({
   "X-Save-History": String(preferences.saveHistory),
@@ -103,6 +122,14 @@ async function checked<T>(response: Response): Promise<T> {
     throw new Error(data.error?.message ?? `Request failed (${response.status})`);
   }
   return data;
+}
+
+export type Me = { user_id: string; roles: string[]; is_admin: boolean };
+
+export async function getMe() {
+  return checked<Me>(
+    await fetch(`${API_BASE}/me`, { headers: authHeaders(false), cache: "no-store" }),
+  );
 }
 
 export async function getModules() {
@@ -260,7 +287,7 @@ export async function complete(
       method: "POST",
       headers: {
         ...authHeaders(consented),
-        ...recordHeaders({ ...preferences, saveHistory: true }),
+        ...recordHeaders(preferences),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ text, ...(model ? { model } : {}) }),
@@ -335,10 +362,29 @@ export async function downloadUsage(moduleId?: string) {
   URL.revokeObjectURL(url);
 }
 
+export type ApiAccessEvent = {
+  event_id: string;
+  user_id: string | null;
+  method: string;
+  route: string;
+  status_code: number;
+  latency_ms: number;
+  occurred_at: string;
+};
+
+export async function getAdminApiHistory() {
+  return checked<{ events: ApiAccessEvent[] }>(
+    await fetch(`${API_BASE}/activity/api?limit=100`, {
+      headers: authHeaders(false),
+      cache: "no-store",
+    }),
+  );
+}
+
 export async function getActivity(moduleId?: string) {
   const search = moduleId ? `?module_id=${encodeURIComponent(moduleId)}` : "";
   return checked<{ interactions: Interaction[] }>(
-    await fetch(`${API_BASE}/activity/me${search}`, {
+    await fetch(`${API_BASE}/activity/admin${search}`, {
       headers: authHeaders(false),
       cache: "no-store",
     }),
@@ -413,7 +459,7 @@ export async function classifyNews(
       method: "POST",
       headers: {
         ...authHeaders(true),
-        ...(preferences ? recordHeaders({ ...preferences, saveHistory: true }) : { "X-Save-History": "true" }),
+        ...(preferences ? recordHeaders(preferences) : { "X-Save-History": "false" }),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ text }),
@@ -430,7 +476,7 @@ export async function generateNewsHeadline(
       method: "POST",
       headers: {
         ...authHeaders(true),
-        ...(preferences ? recordHeaders({ ...preferences, saveHistory: true }) : { "X-Save-History": "true" }),
+        ...(preferences ? recordHeaders(preferences) : { "X-Save-History": "false" }),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ text }),
@@ -475,7 +521,9 @@ export async function processThamizhiOCR(
         data?.error?.message ??
         data?.error ??
         message;
-    } catch {}
+    } catch {
+      // Response body was not JSON; keep the default message.
+    }
 
     throw new Error(message);
   }

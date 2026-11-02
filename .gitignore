@@ -21,3 +21,30 @@ docs/~$*
 apps/web/.env.local
 apps/web/.env.local.*
 apps/api/.env
+apps/api/data/
+
+# Local backup files
+*.bak
+*.before-*
+
+# Python and Node environments
+__pycache__/
+.venv/
+node_modules/
+.next/
+
+# Secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Local databases
+*.sqlite
+*.sqlite3
+
+# Model checkpoints
+*.pth
+*.pt
+*.ckpt
+*.safetensors

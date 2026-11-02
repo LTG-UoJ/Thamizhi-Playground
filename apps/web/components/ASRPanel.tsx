@@ -178,7 +178,7 @@ export function ASRPanel({
 
   return (
     <section className="module-panel" aria-labelledby="asr-title">
-      <div className="panel-heading"><div><span className="step">02</span><h2 id="asr-title">{locale === "en" ? "Speech to text" : "பேச்சிலிருந்து எழுத்து"}</h2></div><span className="chip">ASR</span></div>
+      <div className="panel-heading"><div><span className="step">02</span><h2 id="asr-title">{locale === "en" ? "Speech to Text" : "பேச்சிலிருந்து எழுத்து"}</h2></div><span className="chip">ASR</span></div>
       <div className="recording-box">
         <button className={recording ? "record recording" : "record"} disabled={!enabled || state === "busy"} onClick={toggleRecording}><span className="record-dot" />{recording ? (locale === "en" ? "Stop recording" : "பதிவை நிறுத்து") : (locale === "en" ? "Start recording" : "பதிவைத் தொடங்கு")}</button>
         <span>{locale === "en" ? "or" : "அல்லது"}</span>

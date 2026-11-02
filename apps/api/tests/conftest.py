@@ -30,3 +30,24 @@ def client() -> TestClient:
 @pytest.fixture()
 def headers() -> dict[str, str]:
     return {"X-User-ID": "test-user", "X-Consent-Granted": "true"}
+
+
+@pytest.fixture(autouse=True)
+def admin_db(tmp_path, monkeypatch):
+    from app.core import admins
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("MAP_ADMIN_DATABASE_PATH", str(tmp_path / "admins.sqlite3"))
+    get_settings.cache_clear()
+    admins.add_admin("admin1")
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture()
+def admin_headers(headers: dict[str, str]) -> dict[str, str]:
+    from app.core import admins
+
+    # Same user as `headers`, but registered as an admin for this test only.
+    admins.add_admin(headers["X-User-ID"])
+    return dict(headers)

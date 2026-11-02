@@ -6,10 +6,14 @@ const HEADLINE_BASE =
   process.env.CEYNEWS_HEADLINE_API_URL ?? "http://10.10.10.91:8767";
 
 const nextConfig: NextConfig = {
+  devIndicators: false,
+  env: { NEXT_PUBLIC_BASE_PATH: "" },
   output: "standalone",
   poweredByHeader: false,
   async rewrites() {
     return [
+      { source: "/api/v1/:path*", destination: "http://127.0.0.1:8002/api/v1/:path*" },
+      { source: "/health/:path*", destination: "http://127.0.0.1:8002/health/:path*" },
       {
         source: "/api/ceynews/classify",
         destination: `${CATEGORY_BASE}/classify`,

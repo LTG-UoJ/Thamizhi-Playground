@@ -226,3 +226,221 @@
     min-height: 300px;
   }
 }
+
+/* Research publication reference */
+.research-paper {
+  margin-top: 28px;
+  padding: 20px 24px;
+  border: 1px solid var(--border, #d9dee7);
+  border-radius: 12px;
+  background: var(--surface, transparent);
+}
+
+.research-paper-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+}
+
+.research-paper h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.research-paper p {
+  margin: 5px 0;
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.research-paper a {
+  display: inline-block;
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.research-paper a:hover {
+  text-decoration: underline;
+}
+
+/* Thamizhi AI — UI refinement */
+
+.module-panel,
+.research-paper {
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.module-panel:focus-within,
+.research-paper:hover {
+  border-color: #8cc9c9;
+  box-shadow: 0 8px 24px rgba(13, 79, 91, 0.07);
+}
+
+.research-paper a {
+  color: #087d83;
+  font-weight: 650;
+}
+
+.research-paper a:focus-visible,
+.research-paper a:hover {
+  color: #07565c;
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .module-panel,
+  .research-paper {
+    transition: none;
+  }
+}
+
+/* News AI module heading highlight */
+.module-panel:has(#news-category-title) #news-category-title,
+.module-panel:has(#news-headline-title) #news-headline-title {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #e5f5f2;
+  color: #086c70;
+  font-weight: 700;
+}
+
+/* Highlight their research publication sections */
+.module-panel:has(#news-category-title) .research-paper,
+.module-panel:has(#news-headline-title) .research-paper {
+  border-color: #a8dcd5;
+  background: #f3fbf9;
+}
+
+/* Highlight news research modules on the home page */
+.module-card:has([data-news-module]) {
+  border-color: #a8dcd5;
+  background: #f1faf8;
+}
+
+.module-card:has([data-news-module]):hover {
+  border-color: #54afa5;
+  box-shadow: 0 8px 20px rgba(8, 108, 112, 0.10);
+}
+
+/* News classification category labels */
+.category-label {
+  display: inline-block;
+  margin: 4px 5px 4px 0;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: #e5f5f2;
+  border: 1px solid #b7e1db;
+  color: #086c70;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.category-label:hover {
+  background: #d4eee9;
+}
+
+/* Visible news classification categories */
+.news-category-options {
+  margin: 16px 0 20px;
+}
+
+.news-category-options > strong {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.news-category-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.news-category-badges span {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 16px;
+  border: 1px solid #a8dcd5;
+  border-radius: 999px;
+  background: #e5f5f2;
+  color: #086c70;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Account dropdown for administrators and regular users */
+.account-menu-wrapper {
+  position: relative;
+  margin-top: auto;
+}
+
+.account-menu-wrapper .account-button {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.account-menu-wrapper .account-button > svg {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.account-dropdown {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  width: 100%;
+  z-index: 100;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.13);
+  padding: 8px;
+}
+
+.account-dropdown-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.account-dropdown-heading small {
+  color: #64748b;
+}
+
+.account-signout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #b91c1c;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-signout:hover {
+  background: #fef2f2;
+}
+
+.account-signout:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}

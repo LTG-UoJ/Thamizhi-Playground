@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import FileResponse
 
 from app.core.dependencies import Container, get_container
-from app.core.errors import DomainError
-from app.core.security import Actor, consented_actor, current_actor
+from app.core.security import Actor, admin_actor, consented_actor, current_actor
 from app.platform.models import (
     ExperienceFeedbackRequest,
     InteractionFeedbackRequest,
@@ -13,6 +12,15 @@ from app.platform.models import (
 )
 
 router = APIRouter(tags=["platform"])
+
+
+@router.get("/me")
+async def me(actor: Annotated[Actor, Depends(current_actor)]) -> dict[str, object]:
+    return {
+        "user_id": actor.user_id,
+        "roles": sorted(actor.roles),
+        "is_admin": "platform_admin" in actor.roles,
+    }
 
 
 @router.get("/modules")
@@ -26,11 +34,9 @@ async def modules(
 @router.post("/admin/modules", status_code=201)
 async def create_module(
     request: ModuleDescriptorRequest,
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
 ) -> dict[str, object]:
-    if "platform_admin" not in actor.roles:
-        raise DomainError("FORBIDDEN", "Platform administrator role required.", 403)
     descriptor = await container.records.create_module(request.model_dump(), actor.user_id)
     await container.audit.record(
         actor_id=actor.user_id,
@@ -45,11 +51,9 @@ async def create_module(
 @router.post("/admin/modules/{module_id}/activate")
 async def activate_module(
     module_id: str,
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
 ) -> dict[str, object]:
-    if "platform_admin" not in actor.roles:
-        raise DomainError("FORBIDDEN", "Platform administrator role required.", 403)
     descriptor = await container.records.activate_module(module_id, actor.user_id)
     await container.audit.record(
         actor_id=actor.user_id,
@@ -63,7 +67,7 @@ async def activate_module(
 
 @router.get("/usage/summary")
 async def usage_summary(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
     module_id: Annotated[str | None, Query()] = None,
 ) -> dict[str, object]:
@@ -72,7 +76,7 @@ async def usage_summary(
 
 @router.get("/usage/export.csv")
 async def usage_export(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
     module_id: Annotated[str | None, Query()] = None,
 ) -> Response:
@@ -86,7 +90,7 @@ async def usage_export(
 
 @router.get("/activity/me")
 async def activity_history(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
     module_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
@@ -97,6 +101,29 @@ async def activity_history(
         )
     }
 
+
+@router.get("/activity/admin")
+async def admin_activity_history(
+    actor: Annotated[Actor, Depends(admin_actor)],
+    container: Annotated[Container, Depends(get_container)],
+    module_id: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> dict[str, object]:
+    return {
+        "interactions": await container.records.list_admin_activity(
+            module_id=module_id, limit=limit
+        )
+    }
+
+@router.get("/activity/api")
+async def admin_api_history(
+    actor: Annotated[Actor, Depends(admin_actor)],
+    container: Annotated[Container, Depends(get_container)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> dict[str, object]:
+    return {
+        "events": await container.records.list_admin_api_history(limit=limit)
+    }
 
 @router.delete("/activity/me/{interaction_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_activity(
@@ -227,7 +254,7 @@ async def download_artifact(
 
 @router.get("/audit/me")
 async def my_audit_events(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
 ) -> dict[str, object]:
     return {"events": await container.audit.list_for_actor(actor.user_id)}
@@ -235,7 +262,7 @@ async def my_audit_events(
 
 @router.get("/operations/admission")
 async def admission_snapshot(
-    actor: Annotated[Actor, Depends(current_actor)],
+    actor: Annotated[Actor, Depends(admin_actor)],
     container: Annotated[Container, Depends(get_container)],
 ) -> dict[str, object]:
     return {"queues": await container.admission.snapshot()}

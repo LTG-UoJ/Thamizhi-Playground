@@ -5,7 +5,7 @@ const moduleCopy: Record<string, { en: [string, string]; "ta-LK": [string, strin
   chat: { en: ["Small chat", "Ask focused questions in Tamil or English."], "ta-LK": ["சிறிய உரையாடல்", "தமிழில் அல்லது ஆங்கிலத்தில் கேள்விகளைக் கேளுங்கள்."] },
   tts: { en: ["Text to speech", "Generate playable speech from written text."], "ta-LK": ["எழுத்திலிருந்து பேச்சு", "எழுத்து உரையிலிருந்து பேச்சை உருவாக்குங்கள்."] },
   asr: { en: ["Speech to text", "Record or upload audio for transcription."], "ta-LK": ["பேச்சிலிருந்து எழுத்து", "எழுத்தாக்கத்திற்காக ஒலியைப் பதிவு செய்யுங்கள்."] },
-  ocr: { en: ["Image to text", "Extract text from document images."], "ta-LK": ["படத்திலிருந்து எழுத்து", "ஆவணப் படங்களிலிருந்து உரையைப் பிரித்தெடுங்கள்."] },
+  ocr: { en: ["Image to Text", "Extract text from document images."], "ta-LK": ["படத்திலிருந்து உரை", "ஆவணப் படங்களிலிருந்து உரையைப் பிரித்தெடுங்கள்."] },
 };
 
 export function HomePage({ locale, modules, onOpen }: { locale: Locale; modules: ModuleDescriptor[]; onOpen: (id: string) => void }) {
@@ -20,6 +20,13 @@ export function HomePage({ locale, modules, onOpen }: { locale: Locale; modules:
       <div className="module-grid">
         {modules.map((module) => {
           const labels = moduleCopy[module.module_id]?.[locale] ?? [module.module_id, module.capability];
+          if (module.module_id === "completion") {
+            labels[0] = locale === "en" ? "Text Completion" : "உரைத் தொடர்ச்சி";
+            labels[1] = locale === "en" ? "Generate or continue text." : "உரையை உருவாக்கவும் அல்லது தொடரவும்.";
+          }
+          if (module.module_id === "ocr") {
+            labels[0] = locale === "en" ? "Image to Text" : "படத்திலிருந்து உரை";
+          }
           return <button className="module-card" key={module.module_id} onClick={() => onOpen(module.module_id)}>
             <span className="module-card-icon"><Icon name={(module.module_id in moduleCopy ? module.module_id : "plus") as IconName} /></span>
             <span><strong>{labels[0]}</strong><small>{labels[1]}</small></span>

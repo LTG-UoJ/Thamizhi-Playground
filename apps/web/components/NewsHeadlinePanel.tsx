@@ -1,4 +1,5 @@
 "use client";
+import { ResearchPaper } from "./ResearchPaper";
 
 import { FormEvent, useState } from "react";
 import { generateNewsHeadline, type Locale, type RecordPreferences } from "../lib/api";
@@ -120,6 +121,7 @@ export function NewsHeadlinePanel({
           </div>
         </div>
       )}
-    </section>
+          <ResearchPaper feature="news-headline" locale={locale} />
+</section>
   );
 }

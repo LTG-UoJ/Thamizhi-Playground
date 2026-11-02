@@ -5,9 +5,11 @@ description = "FastAPI gateway for the Modular AI Playground"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1",
+  "google-auth>=2.62.0",
   "httpx>=0.28,<1",
   "pydantic-settings>=2.7,<3",
   "python-multipart>=0.0.20,<1",
+  "requests>=2.34.2",
   "uvicorn[standard]>=0.34,<1",
 ]
 

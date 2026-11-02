@@ -5,7 +5,8 @@ from starlette.testclient import TestClient
 
 @pytest.mark.asyncio
 async def test_news_classify_saves_to_database(
-    client: TestClient, headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    client: TestClient, headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    admin_headers: dict[str, str],
 ) -> None:
     async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
         return httpx.Response(
@@ -27,7 +28,7 @@ async def test_news_classify_saves_to_database(
     assert data["interaction_id"] is not None
 
     # Verify it is saved in history / database
-    history = client.get("/api/v1/activity/me?module_id=news-category", headers=headers)
+    history = client.get("/api/v1/activity/me?module_id=news-category", headers=admin_headers)
     assert history.status_code == 200
     interactions = history.json()["interactions"]
     assert len(interactions) >= 1
@@ -39,7 +40,8 @@ async def test_news_classify_saves_to_database(
 
 @pytest.mark.asyncio
 async def test_news_headline_saves_to_database(
-    client: TestClient, headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    client: TestClient, headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    admin_headers: dict[str, str],
 ) -> None:
     async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
         return httpx.Response(
@@ -61,7 +63,7 @@ async def test_news_headline_saves_to_database(
     assert data["interaction_id"] is not None
 
     # Verify it is saved in history / database
-    history = client.get("/api/v1/activity/me?module_id=news-headline", headers=headers)
+    history = client.get("/api/v1/activity/me?module_id=news-headline", headers=admin_headers)
     assert history.status_code == 200
     interactions = history.json()["interactions"]
     assert len(interactions) >= 1

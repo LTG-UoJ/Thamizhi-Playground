@@ -135,9 +135,12 @@ def test_module_registration_requires_independent_approval(client: TestClient) -
     creator = {
         "X-User-ID": "admin-one",
         "X-Consent-Granted": "true",
-        "X-Roles": "platform_admin",
     }
     approver = {**creator, "X-User-ID": "admin-two"}
+    from app.core import admins
+
+    admins.add_admin(creator["X-User-ID"])
+    admins.add_admin(approver["X-User-ID"])
     created = client.post("/api/v1/admin/modules", headers=creator, json=payload)
     assert created.status_code == 201
     assert created.json()["state"] == "draft"
@@ -154,7 +157,8 @@ def test_module_registration_requires_independent_approval(client: TestClient) -
 
 
 def test_saved_interaction_feedback_and_deletion(
-    client: TestClient, headers: dict[str, str]
+    client: TestClient, headers: dict[str, str],
+    admin_headers: dict[str, str],
 ) -> None:
     response = client.post(
         "/api/v1/chat/completions",
@@ -165,7 +169,7 @@ def test_saved_interaction_feedback_and_deletion(
     interaction_id = response.json()["interaction_id"]
     assert interaction_id
 
-    history = client.get("/api/v1/activity/me?module_id=chat", headers=headers)
+    history = client.get("/api/v1/activity/me?module_id=chat", headers=admin_headers)
     assert history.status_code == 200
     assert interaction_id in {
         item["interaction_id"] for item in history.json()["interactions"]
@@ -194,8 +198,8 @@ def test_content_not_saved_without_recording_opt_in(
     assert response.json()["interaction_id"] is None
 
 
-def test_usage_feedback_and_logout(client: TestClient, headers: dict[str, str]) -> None:
-    usage = client.get("/api/v1/usage/summary", headers=headers)
+def test_usage_feedback_and_logout(client: TestClient, headers: dict[str, str], admin_headers: dict[str, str]) -> None:
+    usage = client.get("/api/v1/usage/summary", headers=admin_headers)
     assert usage.status_code == 200
     assert set(usage.json()["totals"]) == {
         "requests",
@@ -285,7 +289,8 @@ def test_completion_interaction_not_saved_without_opt_in(
 
 
 def test_completion_interaction_saved_with_opt_in(
-    client: TestClient, headers: dict[str, str]
+    client: TestClient, headers: dict[str, str],
+    admin_headers: dict[str, str],
 ) -> None:
     response = client.post(
         "/api/v1/completion/completions",
@@ -296,7 +301,7 @@ def test_completion_interaction_saved_with_opt_in(
     interaction_id = response.json()["interaction_id"]
     assert interaction_id
 
-    history = client.get("/api/v1/activity/me?module_id=completion", headers=headers)
+    history = client.get("/api/v1/activity/me?module_id=completion", headers=admin_headers)
     assert history.status_code == 200
     assert interaction_id in {item["interaction_id"] for item in history.json()["interactions"]}
 
@@ -326,3 +331,48 @@ def test_provider_capabilities_includes_completion(
     capabilities = {item["capability"] for item in response.json()["capabilities"]}
     assert "completion" in capabilities
 
+
+def test_general_features_stay_open_to_normal_users(
+    client: TestClient, headers: dict[str, str]
+) -> None:
+    assert client.get("/api/v1/modules", headers=headers).status_code == 200
+    assert client.get("/api/v1/providers/capabilities", headers=headers).status_code == 200
+
+
+def test_role_header_is_ignored(client, headers):
+    r = client.get("/api/v1/usage/summary", headers={**headers, "X-Roles": "platform_admin"})
+    assert r.status_code == 403
+
+
+ADMIN_ONLY_PATHS = (
+    "/api/v1/usage/summary",
+    "/api/v1/usage/export.csv",
+    "/api/v1/activity/me",
+    "/api/v1/audit/me",
+    "/api/v1/operations/admission",
+)
+
+
+def test_admin_only_routes_reject_normal_users(
+    client: TestClient, headers: dict[str, str], admin_headers: dict[str, str]
+) -> None:
+    normal = {**headers, "X-User-ID": "plain-user"}
+    for path in ADMIN_ONLY_PATHS:
+        assert client.get(path, headers=normal).status_code == 403, path
+        assert client.get(path, headers=admin_headers).status_code == 200, path
+
+
+def test_me_reports_admin_flag(
+    client: TestClient, headers: dict[str, str], admin_headers: dict[str, str]
+) -> None:
+    normal = {**headers, "X-User-ID": "plain-user"}
+    assert client.get("/api/v1/me", headers=normal).json()["is_admin"] is False
+    me = client.get("/api/v1/me", headers=admin_headers).json()
+    assert me["is_admin"] is True
+    assert "platform_admin" in me["roles"]
+
+
+def test_role_header_is_ignored(client: TestClient, headers: dict[str, str]) -> None:
+    forged = {**headers, "X-User-ID": "plain-user", "X-Roles": "platform_admin"}
+    assert client.get("/api/v1/usage/summary", headers=forged).status_code == 403
+    assert client.get("/api/v1/me", headers=forged).json()["is_admin"] is False

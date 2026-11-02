@@ -78,7 +78,7 @@ class NewsService:
             model_id="ceynews-category-classifier",
             language="ta",
             policy=policy,
-            force_save=True,
+            force_save=False,
         )
 
         return {
@@ -144,7 +144,7 @@ class NewsService:
             model_id="ceynews-headline-generator",
             language="ta",
             policy=policy,
-            force_save=True,
+            force_save=False,
         )
 
         return {

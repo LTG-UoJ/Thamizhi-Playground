@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     default_locale: str = "en"
     artifact_dir: Path = Path("artifacts")
     record_database_path: Path = Path("data/playground.sqlite3")
+    admin_database_path: Path = Path("data/admins.sqlite3")
+    signup_enabled: bool = True
+    google_client_id: str = ""
     tts_provider: str = "mock"
     coqui_tts_url: str = "http://thamizhi-xtts:5002"
     asr_provider: str = "external"

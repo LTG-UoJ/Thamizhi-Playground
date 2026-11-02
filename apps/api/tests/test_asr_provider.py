@@ -48,7 +48,7 @@ async def test_external_asr_upload_success(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
     async def mock_post(self: httpx.AsyncClient, url: str, **kwargs: object) -> httpx.Response:
-        assert "language=ta" in url
+        assert url == "http://mock-asr:8000/upload"
         return httpx.Response(
             200,
             json={
