@@ -24,14 +24,20 @@ def _session(token: str, user: dict) -> dict[str, object]:
             "expires_in": accounts.SESSION_HOURS * 3600}
 
 
-def _verify_google(credential: str, client_id: str) -> str:
+def _verify_google(credential: str, client_id: str) -> tuple[str, str, str]:
     from google.auth.transport import requests as grequests
     from google.oauth2 import id_token
 
     info = id_token.verify_oauth2_token(credential, grequests.Request(), client_id)
     if not info.get("email_verified") or not info.get("email"):
         raise ValueError("Google email is not verified.")
-    return str(info["email"])
+    if not info.get("sub"):
+        raise ValueError("Google subject identifier is missing.")
+    return (
+        str(info["email"]),
+        str(info["sub"]),
+        str(info.get("name") or info["email"].split("@")[0]),
+    )
 
 
 @router.post("/auth/signup", status_code=201)
@@ -55,10 +61,10 @@ async def google_sign_in(body: GoogleBody) -> dict[str, object]:
     if not client_id:
         raise DomainError("GOOGLE_NOT_CONFIGURED", "Google sign-in is not configured.", 503)
     try:
-        email = await asyncio.to_thread(_verify_google, body.credential, client_id)
+        email, google_sub, display_name = await asyncio.to_thread(_verify_google, body.credential, client_id)
     except Exception as exc:  # invalid token, wrong audience, expired, network failure
         raise DomainError("INVALID_CREDENTIALS", "Google sign-in could not be verified.", 401) from exc
-    result = await asyncio.to_thread(accounts.google_login, email)
+    result = await asyncio.to_thread(accounts.google_login, email, google_sub, display_name)
     if result is None:
         raise DomainError("INVALID_CREDENTIALS", "This account cannot sign in.", 401)
     return _session(*result)

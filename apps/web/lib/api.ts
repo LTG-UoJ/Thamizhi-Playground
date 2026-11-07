@@ -27,6 +27,7 @@ export type ModuleId = "chat" | "tts" | "asr" | "ocr" | "completion";
 export type RecordPreferences = {
   saveHistory: boolean;
   improvementConsent: boolean;
+  adminHistoryConsent?: boolean;
 };
 
 export type ModuleDescriptor = {
@@ -113,6 +114,10 @@ const authHeaders = (consented = true): HeadersInit => {
 const recordHeaders = (preferences: RecordPreferences): HeadersInit => ({
   "X-Save-History": String(preferences.saveHistory),
   "X-Improvement-Consent": String(preferences.improvementConsent),
+  "X-Admin-History-Consent": String(
+    preferences.saveHistory && preferences.adminHistoryConsent === true
+  ),
+  "X-Admin-Consent-Version": "history-save-v2",
 });
 
 async function checked<T>(response: Response): Promise<T> {
@@ -124,11 +129,50 @@ async function checked<T>(response: Response): Promise<T> {
   return data;
 }
 
-export type Me = { user_id: string; roles: string[]; is_admin: boolean };
+export type Me = { user_id: string; display_name: string; roles: string[]; is_admin: boolean };
+
+export async function getAdminHistoryConsent(): Promise<boolean> {
+  const result = await checked<{ save_history: boolean }>(
+    await fetch(`${API_BASE}/history-preferences`, {
+      headers: authHeaders(false),
+      cache: "no-store",
+    }),
+  );
+  return result.save_history === true;
+}
+
+export async function setAdminHistoryConsent(accepted: boolean): Promise<void> {
+  const result = await checked<{ save_history: boolean }>(
+    await fetch(`${API_BASE}/history-preferences`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(false),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ save_history: accepted }),
+    }),
+  );
+  if (result.save_history !== accepted) {
+    throw new Error("History preference confirmation mismatch");
+  }
+}
 
 export async function getMe() {
   return checked<Me>(
     await fetch(`${API_BASE}/me`, { headers: authHeaders(false), cache: "no-store" }),
+  );
+}
+
+export async function updateProfile(displayName: string) {
+  return checked<Me>(
+    await fetch(`${API_BASE}/me/profile`, {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(false),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ display_name: displayName }),
+    }),
   );
 }
 
@@ -363,6 +407,14 @@ export async function downloadUsage(moduleId?: string) {
 }
 
 export type ApiAccessEvent = {
+  service?: string;
+  history_saved?: number;
+  research_use?: number;
+  user_name?: string;
+  request_id?: string;
+  input_text?: string | null;
+  output_text?: string | null;
+
   event_id: string;
   user_id: string | null;
   method: string;
@@ -498,6 +550,7 @@ export type ThamizhiOCRResult = {
 
 export async function processThamizhiOCR(
   file: File,
+  preferences: RecordPreferences,
 ): Promise<ThamizhiOCRResult> {
   const body = new FormData();
   body.append("file", file);
@@ -505,8 +558,12 @@ export async function processThamizhiOCR(
   // IMPORTANT:
   // Browser talks ONLY to Next.js.
   // Next.js talks to the OCR backend.
-  const response = await fetch("/api/ocr/process", {
+  const response = await fetch("/playground/api/ocr/process", {
     method: "POST",
+    headers: {
+      ...authHeaders(true),
+      ...recordHeaders(preferences),
+    },
     body,
     cache: "no-store",
   });
@@ -534,11 +591,30 @@ export async function processThamizhiOCR(
 export function getThamizhiOCRImageUrl(
   sessionId: string,
 ): string {
-  return `/api/ocr/image/${encodeURIComponent(sessionId)}`;
+  return `/playground/api/ocr/image/${encodeURIComponent(sessionId)}`;
 }
 
 export function getThamizhiOCRDocxUrl(
   sessionId: string,
 ): string {
-  return `/api/ocr/docx/${encodeURIComponent(sessionId)}`;
+  return `/playground/api/ocr/docx/${encodeURIComponent(sessionId)}`;
+}
+
+export type AdminRecordedIO = {
+  interaction_id: string;
+  user_id: string;
+  module_id: string;
+  query_text: string | null;
+  answer_text: string | null;
+  status: string;
+  created_at: string;
+};
+
+export async function getAdminRecordedIO() {
+  return checked<{ interactions: AdminRecordedIO[] }>(
+    await fetch(`${API_BASE}/activity/admin/io?limit=100`, {
+      headers: authHeaders(false),
+      cache: "no-store",
+    }),
+  );
 }

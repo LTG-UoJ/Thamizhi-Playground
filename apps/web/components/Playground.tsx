@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getMe,
+  getAdminHistoryConsent,
+  setAdminHistoryConsent,
+  updateProfile,
   getModules,
   type Locale,
   type ModuleDescriptor,
@@ -28,7 +31,7 @@ type PageId = "home" | "usage" | "activity" | "news-category" | "news-headline" 
 const fallbackModules: ModuleDescriptor[] = [
   { module_id: "tts", descriptor_version: "1.0", capability: "tts", route_slug: "text-to-speech", navigation_group: "ai_modules", title_key: "modules.tts.title", description_key: "modules.tts.description", icon_key: "audio-lines", sort_order: 10, enabled: true, renderer_kind: "compiled_custom", provider_capability: "tts" },
   { module_id: "asr", descriptor_version: "1.0", capability: "asr", route_slug: "speech-to-text", navigation_group: "ai_modules", title_key: "modules.asr.title", description_key: "modules.asr.description", icon_key: "mic", sort_order: 20, enabled: true, renderer_kind: "compiled_custom", provider_capability: "asr" },
-  { module_id: "chat", descriptor_version: "1.0", capability: "chat", route_slug: "chat", navigation_group: "ai_modules", title_key: "modules.chat.title", description_key: "modules.chat.description", icon_key: "message-circle", sort_order: 30, enabled: true, renderer_kind: "compiled_custom", provider_capability: "chat" },
+  { module_id: "chat", descriptor_version: "1.0", capability: "chat", route_slug: "chat", navigation_group: "ai_modules", title_key: "modules.chat.title", description_key: "modules.chat.description", icon_key: "message-circle", sort_order: 30, enabled: false, renderer_kind: "compiled_custom", provider_capability: "chat" },
   { module_id: "ocr", descriptor_version: "1.0", capability: "ocr", route_slug: "ocr", navigation_group: "ai_modules", title_key: "modules.ocr.title", description_key: "modules.ocr.description", icon_key: "scan-text", sort_order: 40, enabled: true, renderer_kind: "compiled_custom", provider_capability: "ocr" },
   { module_id: "completion", descriptor_version: "1.0", capability: "completion", route_slug: "completion", navigation_group: "ai_modules", title_key: "modules.completion.title", description_key: "modules.completion.description", icon_key: "type", sort_order: 50, enabled: true, renderer_kind: "compiled_custom", provider_capability: "completion" },
 ];
@@ -56,40 +59,36 @@ export function Playground() {
   const [signingOut, setSigningOut] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [account, setAccount] = useState<{ user_id: string; is_admin: boolean } | null>(null);
+  const [account, setAccount] = useState<{ user_id: string; display_name: string; is_admin: boolean } | null>(null);
   const [consent, setConsent] = useState(true);
-  const [preferences, setPreferences] = useState<RecordPreferences>({ saveHistory: false, improvementConsent: false });
+  const [preferences, setPreferences] = useState<RecordPreferences>({ saveHistory: false, improvementConsent: false, adminHistoryConsent: false });
   const [historyReady, setHistoryReady] = useState(false);
+  const [historyConsentPending, setHistoryConsentPending] = useState(false);
+  const [historyConsentError, setHistoryConsentError] = useState("");
   const [modulesUsed, setModulesUsed] = useState<ModuleId[]>([]);
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    getModules().then((response) => setModules(response.modules.filter((module) => module.enabled && module.module_id !== "translate-e9ececf1").sort((a, b) => a.sort_order - b.sort_order))).catch(() => setModules(fallbackModules));
+    getModules().then((response) => setModules(response.modules.filter((module) => module.enabled && module.module_id !== "translate-e9ececf1" && module.module_id !== "chat").sort((a, b) => a.sort_order - b.sort_order))).catch(() => setModules(fallbackModules));
   }, []);
 
   useEffect(() => {
     getMe()
-      .then((me) => {
+      .then(async (me) => {
         setAccount(me);
         setIsAdmin(me.is_admin);
 
-        const key = `thamizhi:history:${encodeURIComponent(me.user_id)}`;
-        let saved: string | null = null;
-
-        try {
-          saved = window.localStorage.getItem(key);
-        } catch {
-          // Browser storage may be unavailable.
-        }
-
+        const accepted = await getAdminHistoryConsent();
         setPreferences({
-          saveHistory: saved === null ? true : saved === "true",
+          saveHistory: accepted,
           improvementConsent: false,
+          adminHistoryConsent: accepted,
         });
         setHistoryReady(true);
       })
       .catch(() => {
+        setHistoryConsentError("Unable to load history consent settings.");
         setAccount(null);
         setIsAdmin(false);
         setHistoryReady(false);
@@ -130,7 +129,7 @@ export function Playground() {
     } catch {
       clearToken();
     } finally {
-      window.location.assign("/");
+      window.location.reload();
     }
   }
 
@@ -158,9 +157,22 @@ export function Playground() {
         {accountMenuOpen && (
           <div className="account-dropdown">
             <div className="account-dropdown-heading">
-              <strong>{account?.user_id ?? "Account"}</strong>
+              <strong>{account?.display_name ?? "Account"}</strong>
               <small>{account?.is_admin ? "Administrator" : "User"}</small>
             </div>
+            <small>{account?.user_id}</small>
+            <button type="button" onClick={async () => {
+              const name = window.prompt("Enter your display name", account?.display_name ?? "");
+              if (name === null || !name.trim()) return;
+              try {
+                await updateProfile(name.trim());
+                setAccount(await getMe());
+              } catch (error) {
+                window.alert(error instanceof Error ? error.message : "Could not update profile.");
+              }
+            }}>
+              Edit display name
+            </button>
             <button type="button" className="account-signout" disabled={signingOut} onClick={() => void handleSignOut()}>
               <Icon name="logout" />
               <span>{signingOut ? (locale === "en" ? "Signing out..." : "வெளியேறுகிறது...") : (locale === "en" ? "Sign out" : "வெளியேறு")}</span>
@@ -168,8 +180,8 @@ export function Playground() {
           </div>
         )}
         <button type="button" className="account-button" aria-expanded={accountMenuOpen} aria-label={locale === "en" ? "Account menu" : "கணக்கு பட்டி"} onClick={() => setAccountMenuOpen((open) => !open)}>
-          <span className="avatar">{account?.user_id?.slice(0, 2).toUpperCase() ?? "U"}</span>
-          <span><strong>{account?.user_id ?? "Loading..."}</strong>
+          <span className="avatar">{account?.display_name?.slice(0, 2).toUpperCase() ?? "U"}</span>
+          <span><strong>{account?.display_name ?? "Loading..."}</strong>
           <small>{account?.is_admin ? "Administrator" : "User"}</small></span>
           <Icon name="settings" />
         </button>
@@ -181,9 +193,37 @@ export function Playground() {
         <button className={`data-button ${preferences.saveHistory ? "on" : ""}`} onClick={() => setDataOpen((open) => !open)}><Icon name="shield" /><span>{locale === "en" ? `History ${preferences.saveHistory ? "on" : "off"}` : `வரலாறு ${preferences.saveHistory ? "இயக்கம்" : "நிறுத்தம்"}`}</span></button>
       </div></header>
       {dataOpen && <section className="data-popover" aria-label="Data controls"><div className="popover-heading"><strong>{locale === "en" ? "Data controls" : "தரவுக் கட்டுப்பாடுகள்"}</strong><button className="icon-button" onClick={() => setDataOpen(false)} aria-label="Close"><Icon name="close" /></button></div>
-        <label><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span><strong>{locale === "en" ? "Enable AI processing" : "அமர்வுச் செயலாக்கத்தை அனுமதி"}</strong><small>{locale === "en" ? "Required to use AI features. Your inputs are processed to generate results." : "AI தொகுதியை இயக்க இது தேவை."}</small></span></label>
-        <label><input type="checkbox" checked={preferences.saveHistory} onChange={(event) => setPreferences((current) => ({ saveHistory: event.target.checked, improvementConsent: event.target.checked ? current.improvementConsent : false }))} /><span><strong>{locale === "en" ? "Save my activity history" : "எனது செயற்பாட்டு வரலாற்றைச் சேமி"}</strong><small>{locale === "en" ? "Stores inputs and outputs for 30 days." : "உள்ளீடுகளையும் வெளியீடுகளையும் 30 நாட்களுக்குச் சேமிக்கும்."}</small></span></label>
-        <label><input type="checkbox" checked={preferences.improvementConsent} disabled={!preferences.saveHistory} onChange={(event) => setPreferences((current) => ({ ...current, improvementConsent: event.target.checked }))} /><span><strong>{locale === "en" ? "Contribute saved results to research" : "மேம்பாட்டிற்குச் சேமித்த முடிவுகளைப் பயன்படுத்து"}</strong><small>{locale === "en" ? "Optional research consent. Saved records may be retained for up to 180 days. Does not automatically enable model training." : "தனியான, திரும்பப் பெறக்கூடிய ஒப்புதல். மாதிரிப் பயிற்சியைத் தானாக இயக்காது."}</small></span></label>
+        <label><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span><strong>{locale === "en" ? "Enable AI processing" : "அமர்வுச் செயலாக்கத்தை அனுமதி"}</strong><small>{locale === "en" ? "Required to use AI features. Inputs are processed to generate results and are not saved unless activity history is enabled." : "AI அம்சங்களைப் பயன்படுத்த இது அவசியம். முடிவுகளை உருவாக்க உள்ளீடுகள் செயலாக்கப்படும். செயற்பாட்டு வரலாறு இயக்கப்பட்டிருந்தால் மட்டுமே அவை சேமிக்கப்படும்."}</small></span></label>
+        <label><input type="checkbox" checked={preferences.saveHistory} disabled={!historyReady || historyConsentPending}
+          onChange={async (event) => {
+            const accepted = event.target.checked;
+            setHistoryConsentPending(true);
+            setHistoryConsentError("");
+            try {
+              await setAdminHistoryConsent(accepted);
+              setPreferences((current) => ({
+                ...current,
+                saveHistory: accepted,
+                adminHistoryConsent: accepted,
+                improvementConsent: accepted
+                  ? current.improvementConsent
+                  : false,
+              }));
+            } catch {
+              setHistoryConsentError(
+                locale === "en"
+                  ? "Unable to update history consent. Please try again."
+                  : "வரலாற்றுச் சேமிப்பு ஒப்புதலைப் புதுப்பிக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்."
+              );
+            } finally {
+              setHistoryConsentPending(false);
+            }
+          }} /><span><strong>{locale === "en" ? "Save my activity history" : "எனது செயற்பாட்டு வரலாற்றைச் சேமி"}</strong><small>{locale === "en" ? "Save inputs and outputs until you delete them. Authorized administrators can access newly saved history. Authorized administrators can view saved history for service support and monitoring. This does not permit research use." : "உள்ளீடுகளும் வெளியீடுகளும் நீங்கள் நீக்கும் வரை சேமிக்கப்படும். சேவை ஆதரவு மற்றும் கண்காணிப்புக்காக அங்கீகரிக்கப்பட்ட நிர்வாகிகள் இவ்வரலாற்றைப் பார்க்கலாம். இது ஆராய்ச்சிப் பயன்பாட்டை அனுமதிக்காது."}</small></span></label>
+        {historyConsentPending && (
+          <small>{locale === "en" ? "Updating consent..." : "ஒப்புதல் புதுப்பிக்கப்படுகிறது..."}</small>
+        )}
+        {historyConsentError && <p role="alert">{historyConsentError}</p>}
+        <label><input type="checkbox" checked={preferences.improvementConsent} disabled={!preferences.saveHistory} onChange={(event) => setPreferences((current) => ({ ...current, improvementConsent: event.target.checked }))} /><span><strong>{locale === "en" ? "Allow my saved data to be used for research" : "எனது சேமிக்கப்பட்ட தரவை ஆராய்ச்சிக்குப் பயன்படுத்த அனுமதி"}</strong><small>{locale === "en" ? "Optional consent. When enabled, newly saved inputs and outputs may be used for research. Saved history has no automatic expiration. Research consent can be withdrawn." : "விருப்பத்திற்குரிய ஒப்புதல். சேமிக்கப்பட்ட உள்ளீடுகளும் வெளியீடுகளும் ஆராய்ச்சிக்குப் பயன்படுத்தப்படலாம்; தானாக நீக்கப்படாது. ஆராய்ச்சி ஒப்புதலைத் திரும்பப் பெறலாம்."}</small></span></label>
       </section>}
       <div className="content-canvas">
         {active === "home" && <HomePage locale={locale} modules={modules.filter((m) => m.module_id !== "news-category" && m.module_id !== "news-headline")} onOpen={(id) => isModuleId(id) && navigate(id)} />}

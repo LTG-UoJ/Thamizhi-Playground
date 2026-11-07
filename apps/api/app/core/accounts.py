@@ -73,6 +73,7 @@ def verify_password(password: str, stored: str) -> bool:
 def _public(row: sqlite3.Row) -> dict:
     return {
         "user_id": row["user_id"],
+        "display_name": row["display_name"] or row["user_id"].split("@")[0],
         "role": row["role"],
         "disabled": bool(row["disabled"]),
         "created_at": row["created_at"],
@@ -202,28 +203,85 @@ if __name__ == "__main__":
         sys.exit(__doc__)
 
 
-def google_login(email: str) -> tuple[str, dict] | None:
-    """Sign in a Google-verified email, creating a normal user on first use.
-
-    Google accounts have no password ('!' can never match a stored hash).
-    """
+def google_login(email: str, google_sub: str, display_name: str) -> tuple[str, dict] | None:
     email = email.strip().lower()
-    if not USER_ID_RE.match(email):
+    google_sub = google_sub.strip()
+    display_name = display_name.strip()[:100]
+
+    if not USER_ID_RE.match(email) or not google_sub:
         return None
+
     with closing(_connect()) as conn, conn:
-        row = conn.execute("SELECT * FROM users WHERE user_id = ?", (email,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM users WHERE google_sub = ?", (google_sub,)
+        ).fetchone()
+
         if row is None:
-            conn.execute(
-                "INSERT INTO users (user_id, password_hash, role, created_at) VALUES (?, '!', 'user', ?)",
-                (email, _now().isoformat()),
-            )
-            row = conn.execute("SELECT * FROM users WHERE user_id = ?", (email,)).fetchone()
-        if row["disabled"]:
+            existing = conn.execute(
+                "SELECT * FROM users WHERE user_id = ?", (email,)
+            ).fetchone()
+
+            if existing is not None:
+                if existing["password_hash"] != "!":
+                    return None
+
+                if existing["google_sub"] is not None:
+                    return None
+
+                # Legacy Google-only account: associate it on first
+                # successful verified Google sign-in.
+                conn.execute(
+                    "UPDATE users SET google_sub = ?, display_name = ? WHERE user_id = ?",
+                    (google_sub, display_name, email),
+                )
+            else:
+                conn.execute(
+                    """INSERT INTO users
+                       (user_id, password_hash, role, created_at, google_sub, display_name)
+                       VALUES (?, '!', 'user', ?, ?, ?)""",
+                    (email, _now().isoformat(), google_sub, display_name),
+                )
+
+            row = conn.execute(
+                "SELECT * FROM users WHERE google_sub = ?", (google_sub,)
+            ).fetchone()
+
+        if row is None or row["disabled"]:
             return None
+
         token = secrets.token_urlsafe(32)
         expires = _now() + timedelta(hours=SESSION_HOURS)
+
         conn.execute(
             "INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
-            (hashlib.sha256(token.encode()).hexdigest(), email, expires.isoformat()),
+            (hashlib.sha256(token.encode()).hexdigest(), row["user_id"], expires.isoformat()),
         )
+
         return token, _public(row)
+
+def get_profile(user_id: str) -> dict | None:
+    with closing(_connect()) as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE user_id = ? AND disabled = 0",
+            (user_id,),
+        ).fetchone()
+        return _public(row) if row else None
+
+
+def update_display_name(user_id: str, display_name: str) -> dict:
+    name = display_name.strip()
+    if not 1 <= len(name) <= 100:
+        raise ValueError("Display name must be 1–100 characters.")
+
+    with closing(_connect()) as conn, conn:
+        result = conn.execute(
+            "UPDATE users SET display_name = ? WHERE user_id = ? AND disabled = 0",
+            (name, user_id),
+        )
+        if result.rowcount == 0:
+            raise LookupError("Account not found.")
+
+    profile = get_profile(user_id)
+    if profile is None:
+        raise LookupError("Account not found.")
+    return profile

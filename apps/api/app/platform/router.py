@@ -1,8 +1,12 @@
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import FileResponse
 
+from app.core import accounts
+from app.core.errors import DomainError
+from pydantic import BaseModel
 from app.core.dependencies import Container, get_container
 from app.core.security import Actor, admin_actor, consented_actor, current_actor
 from app.platform.models import (
@@ -18,9 +22,29 @@ router = APIRouter(tags=["platform"])
 async def me(actor: Annotated[Actor, Depends(current_actor)]) -> dict[str, object]:
     return {
         "user_id": actor.user_id,
+        "display_name": (await asyncio.to_thread(accounts.get_profile, actor.user_id) or {}).get("display_name", actor.user_id.split("@")[0]),
         "roles": sorted(actor.roles),
         "is_admin": "platform_admin" in actor.roles,
     }
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str
+
+
+@router.patch("/me/profile")
+async def update_profile(
+    body: ProfileUpdate,
+    actor: Annotated[Actor, Depends(current_actor)],
+) -> dict[str, object]:
+    try:
+        return await asyncio.to_thread(
+            accounts.update_display_name, actor.user_id, body.display_name
+        )
+    except ValueError as exc:
+        raise DomainError("INVALID_REQUEST", str(exc), 400) from exc
+    except LookupError as exc:
+        raise DomainError("NOT_FOUND", str(exc), 404) from exc
 
 
 @router.get("/modules")
@@ -121,25 +145,24 @@ async def admin_api_history(
     container: Annotated[Container, Depends(get_container)],
     limit: Annotated[int, Query(ge=1, le=100)] = 100,
 ) -> dict[str, object]:
-    return {
-        "events": await container.records.list_admin_api_history(limit=limit)
-    }
+    events = await container.records.list_admin_api_history(limit=limit)
 
-@router.delete("/activity/me/{interaction_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_activity(
-    interaction_id: str,
-    actor: Annotated[Actor, Depends(current_actor)],
-    container: Annotated[Container, Depends(get_container)],
-) -> Response:
-    await container.records.delete_interaction(actor.user_id, interaction_id)
-    await container.audit.record(
-        actor_id=actor.user_id,
-        action="interaction.delete",
-        target_type="interaction",
-        target_id=interaction_id,
-        outcome="completed",
-    )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    # Resolve each user's saved Google/profile display name.
+    user_ids = {event["user_id"] for event in events if event.get("user_id")}
+    profiles = {}
+
+    for user_id in user_ids:
+        profile = await asyncio.to_thread(accounts.get_profile, user_id)
+        profiles[user_id] = (
+            profile.get("display_name") if profile else None
+        )
+
+    for event in events:
+        user_id = event.get("user_id")
+        event["user_name"] = profiles.get(user_id) or user_id or "Anonymous"
+
+    return {"events": events}
+
 
 
 @router.post("/interactions/{interaction_id}/feedback", status_code=201)
@@ -266,3 +289,14 @@ async def admission_snapshot(
     container: Annotated[Container, Depends(get_container)],
 ) -> dict[str, object]:
     return {"queues": await container.admission.snapshot()}
+
+
+@router.get("/activity/admin/io")
+async def admin_recorded_io(
+    actor: Annotated[Actor, Depends(admin_actor)],
+    container: Annotated[Container, Depends(get_container)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
+) -> dict[str, object]:
+    return {
+        "interactions": await container.records.list_admin_recorded_io(limit=limit)
+    }

@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import (
     APIRouter,
+    Request,
     Depends,
     File,
     Form,
@@ -35,22 +36,37 @@ async def create_asr_session(
 
 @router.post("/transcriptions", response_model=Transcript)
 async def transcribe_audio(
+    http_request: Request,
     actor: Annotated[Actor, Depends(consented_actor)],
     container: Annotated[Container, Depends(get_container)],
     audio: Annotated[UploadFile, File()],
     language: Annotated[str, Form()] = "en",
     save_history: Annotated[str | None, Header(alias="X-Save-History")] = None,
     improvement_consent: Annotated[str | None, Header(alias="X-Improvement-Consent")] = None,
+    admin_history_consent: Annotated[str | None, Header(alias="X-Admin-History-Consent")] = None,
+    admin_consent_version: Annotated[str | None, Header(alias="X-Admin-Consent-Version")] = None,
 ) -> dict[str, object]:
     if language not in {"en", "ta-LK"}:
         raise DomainError("VALIDATION_ERROR", "Unsupported language.", 400)
     data = await audio.read(25 * 1024 * 1024 + 1)
-    return await container.asr.transcribe(
+    result = await container.asr.transcribe(
         actor.user_id,
         data,
         language,
-        policy_from_headers(save_history, improvement_consent),
+        policy_from_headers(
+                save_history,
+                improvement_consent,
+                (
+                    admin_history_consent
+                    if await container.records.has_history_save_consent(actor.user_id)
+                    else None
+                ),
+                admin_consent_version,
+            ),
     )
+    if result.get("interaction_id"):
+        http_request.state.interaction_id = result["interaction_id"]
+    return result
 
 
 @router.websocket("/sessions/{session_id}/stream")

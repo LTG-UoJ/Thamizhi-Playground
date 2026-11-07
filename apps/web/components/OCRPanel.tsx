@@ -26,6 +26,7 @@ type Props = {
 export default function OCRPanel({
   locale,
   enabled,
+  preferences,
   onUsed,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -109,7 +110,7 @@ export default function OCRPanel({
     setSessionId("");
 
     try {
-      const result = await processThamizhiOCR(file);
+      const result = await processThamizhiOCR(file, preferences);
 
       console.log("ThamizhiOCR response:", result);
 

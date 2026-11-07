@@ -43,6 +43,8 @@ app.add_middleware(
         "X-Roles",
         "X-Save-History",
         "X-Improvement-Consent",
+        "X-Admin-History-Consent",
+        "X-Admin-Consent-Version",
     ],
 )
 
@@ -78,6 +80,18 @@ async def request_context(
 ) -> Response:
     request_id = request.headers.get("X-Request-ID") or f"req_{uuid4().hex}"
     request.state.request_id = request_id
+    from app.core import accounts
+    import asyncio
+
+    user_id = None
+    authorization = request.headers.get("Authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        if token:
+            user = await asyncio.to_thread(accounts.user_for_token, token)
+            if user:
+                user_id = user["user_id"]
+
     started = perf_counter()
     response: Response | None = None
     try:
@@ -87,12 +101,13 @@ async def request_context(
     finally:
         if request.url.path.startswith("/api/"):
             await get_container().records.record_access(
-                user_id=request.headers.get("X-User-ID"),
+                user_id=user_id,
                 method=request.method,
                 route=request.url.path,
                 status_code=response.status_code if response else 500,
                 latency_ms=(perf_counter() - started) * 1_000,
                 request_id=request_id,
+                interaction_id=getattr(request.state, "interaction_id", None),
             )
 
 
@@ -121,8 +136,6 @@ for capability_router in (
     platform_router,
     accounts_router,
     auth_router,
-    accounts_router,
-    auth_router,
     tts_router,
     asr_router,
     chat_router,
@@ -131,3 +144,14 @@ for capability_router in (
     news_router,
 ):
     app.include_router(capability_router, prefix="/api/v1")
+
+
+# OCR proxy usage and history
+from app.platform.ocr_audit import router as ocr_audit_router
+app.include_router(ocr_audit_router)
+
+from app.platform.admin_history_consent import router as admin_history_consent_router
+app.include_router(admin_history_consent_router, prefix="/api/v1")
+
+from app.platform.history_preferences import router as history_preferences_router
+app.include_router(history_preferences_router, prefix="/api/v1")

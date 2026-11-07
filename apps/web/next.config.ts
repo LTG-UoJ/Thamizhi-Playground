@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const CATEGORY_BASE =
-  process.env.CEYNEWS_CATEGORY_API_URL ?? "http://10.10.10.91:8766";
+  process.env.CEYNEWS_CATEGORY_API_URL ?? "http://10.10.10.92:8766";
 const HEADLINE_BASE =
-  process.env.CEYNEWS_HEADLINE_API_URL ?? "http://10.10.10.91:8767";
+  process.env.CEYNEWS_HEADLINE_API_URL ?? "http://10.10.10.92:8767";
 
 const nextConfig: NextConfig = {
   devIndicators: false,

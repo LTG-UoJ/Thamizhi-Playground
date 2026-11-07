@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   authedFetch,
   clearToken,
   errorMessage,
   getToken,
+  googleLogin,
   login,
   signup,
 } from "../lib/auth";
@@ -65,6 +66,59 @@ export function LoginGate({ children }: { children: ReactNode }) {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const googleButtonRef = useRef<HTMLDivElement>(null);
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
+  useEffect(() => {
+    if (status !== "guest" || !googleClientId) return;
+
+    let cancelled = false;
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+
+    script.onload = () => {
+      if (cancelled || !googleButtonRef.current) return;
+
+      const google = (window as Window & { google?: { accounts?: { id?: { initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void; renderButton: (element: HTMLElement, options: { theme: string; size: string; width: number; text: string }) => void } } } }).google;
+      if (!google?.accounts?.id) return;
+
+      google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async ({ credential }: { credential: string }) => {
+          setError("");
+          setBusy(true);
+          try {
+            await googleLogin(credential);
+            const account = await fetchMe();
+            setMe(account);
+            setStatus("authenticated");
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Google sign-in failed.");
+          } finally {
+            setBusy(false);
+          }
+        },
+      });
+
+      google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        width: 350,
+        text: mode === "signup" ? "signup_with" : "signin_with",
+      });
+    };
+
+    document.head.appendChild(script);
+
+    return () => {
+      cancelled = true;
+      script.remove();
+    };
+  }, [status, mode, googleClientId]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -306,23 +360,13 @@ export function LoginGate({ children }: { children: ReactNode }) {
             <span style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
           </div>
 
-          <button
-            type="button"
-            disabled
-            title="Google authentication requires OAuth configuration and security verification."
-            style={{
-              width: "100%",
-              padding: 12,
-              background: "#f8fafc",
-              color: "#64748b",
-              border: "1px solid #e2e8f0",
-              borderRadius: 10,
-              fontWeight: 600,
-              cursor: "not-allowed",
-            }}
-          >
-            Continue with Google — Coming soon
-          </button>
+          {googleClientId ? (
+            <div ref={googleButtonRef} style={{ display: "flex", justifyContent: "center" }} />
+          ) : (
+            <p style={{ textAlign: "center", color: "#64748b" }}>
+              Google sign-in is not configured.
+            </p>
+          )}
 
           <p style={{
             marginTop: 24,

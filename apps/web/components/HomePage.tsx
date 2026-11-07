@@ -8,7 +8,8 @@ const moduleCopy: Record<string, { en: [string, string]; "ta-LK": [string, strin
   ocr: { en: ["Image to Text", "Extract text from document images."], "ta-LK": ["படத்திலிருந்து உரை", "ஆவணப் படங்களிலிருந்து உரையைப் பிரித்தெடுங்கள்."] },
 };
 
-export function HomePage({ locale, modules, onOpen }: { locale: Locale; modules: ModuleDescriptor[]; onOpen: (id: string) => void }) {
+export function HomePage({ locale, modules: allModules, onOpen }: { locale: Locale; modules: ModuleDescriptor[]; onOpen: (id: string) => void }) {
+  const modules = allModules.filter((module) => module.module_id !== "chat");
   return <div className="page-stack">
     <section className="welcome-block">
       <span className="welcome-kicker">THAMIZHI AI PLAYGROUND</span>

@@ -1,7 +1,7 @@
 import hashlib
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, UploadFile
+from fastapi import Request, APIRouter, BackgroundTasks, Depends, File, Form, Header, UploadFile
 
 from app.core.dependencies import Container, get_container
 from app.core.errors import DomainError
@@ -14,6 +14,7 @@ router = APIRouter(prefix="/ocr", tags=["ocr"])
 
 @router.post("/jobs", response_model=OCRJobAccepted, status_code=202)
 async def create_ocr_job(
+    http_request: Request,
     background: BackgroundTasks,
     actor: Annotated[Actor, Depends(consented_actor)],
     container: Annotated[Container, Depends(get_container)],
@@ -22,6 +23,8 @@ async def create_ocr_job(
     language: Annotated[str, Form()] = "en",
     save_history: Annotated[str | None, Header(alias="X-Save-History")] = None,
     improvement_consent: Annotated[str | None, Header(alias="X-Improvement-Consent")] = None,
+    admin_history_consent: Annotated[str | None, Header(alias="X-Admin-History-Consent")] = None,
+    admin_consent_version: Annotated[str | None, Header(alias="X-Admin-Consent-Version")] = None,
 ) -> dict[str, str]:
     if language not in {"en", "ta-LK"}:
         raise DomainError("VALIDATION_ERROR", "Unsupported language.", 400)
@@ -36,6 +39,7 @@ async def create_ocr_job(
     fingerprint = container.idempotency.fingerprint(request_fingerprint)
     replay = await container.idempotency.reserve(actor.user_id, route, idempotency_key, fingerprint)
     if replay:
+        http_request.state.interaction_id = replay["job_id"]
         return replay
     try:
         response = await container.ocr.create(
@@ -44,9 +48,19 @@ async def create_ocr_job(
             media_type=media_type,
             owner_id=actor.user_id,
             background=background,
-            policy=policy_from_headers(save_history, improvement_consent),
+            policy=policy_from_headers(
+                save_history,
+                improvement_consent,
+                (
+                    admin_history_consent
+                    if await container.records.has_history_save_consent(actor.user_id)
+                    else None
+                ),
+                admin_consent_version,
+            ),
         )
         await container.idempotency.complete(actor.user_id, route, idempotency_key, response)
+        http_request.state.interaction_id = response["job_id"]
         return response
     except Exception:
         await container.idempotency.forget(actor.user_id, route, idempotency_key)

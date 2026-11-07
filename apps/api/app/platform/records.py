@@ -16,6 +16,7 @@ from app.core.errors import DomainError
 class RecordingPolicy:
     save_history: bool = False
     improvement_consent: bool = False
+    admin_history_visible: bool = False
 
 
 MODULES: tuple[dict[str, Any], ...] = (
@@ -131,6 +132,30 @@ class RecordStore:
         self.path = path.resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._connection = sqlite3.connect(self.path, check_same_thread=False)
+
+        self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS admin_history_consents (
+                user_id TEXT PRIMARY KEY,
+                consent_version TEXT NOT NULL,
+                accepted_at TEXT,
+                withdrawn_at TEXT,
+                active INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        self._connection.commit()
+
+
+        self._connection.execute("""
+            CREATE TABLE IF NOT EXISTS history_save_consents (
+                user_id TEXT PRIMARY KEY,
+                consent_version TEXT NOT NULL,
+                accepted_at TEXT,
+                withdrawn_at TEXT,
+                active INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        self._connection.commit()
+
         self._connection.row_factory = sqlite3.Row
         self._lock = asyncio.Lock()
         self._migrate()
@@ -149,6 +174,7 @@ class RecordStore:
                 status_code INTEGER NOT NULL,
                 latency_ms REAL NOT NULL,
                 request_id TEXT NOT NULL,
+                interaction_id TEXT,
                 occurred_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS access_events_user_time
@@ -208,6 +234,18 @@ class RecordStore:
             );
             """
         )
+        existing_columns = {
+            row["name"] for row in self._connection.execute(
+                "PRAGMA table_info(inference_interactions)"
+            )
+        }
+        if "admin_history_visible" not in existing_columns:
+            self._connection.execute(
+                "ALTER TABLE inference_interactions "
+                "ADD COLUMN admin_history_visible INTEGER NOT NULL DEFAULT 0"
+            )
+            self._connection.commit()
+
         now = datetime.now(UTC).isoformat()
         for descriptor in MODULES:
             self._connection.execute(
@@ -217,6 +255,18 @@ class RecordStore:
                 (descriptor["module_id"], json.dumps(descriptor), now, now),
             )
         self._connection.commit()
+
+        columns = {
+            row["name"]
+            for row in self._connection.execute(
+                "PRAGMA table_info(access_events)"
+            ).fetchall()
+        }
+        if "interaction_id" not in columns:
+            self._connection.execute(
+                "ALTER TABLE access_events ADD COLUMN interaction_id TEXT"
+            )
+            self._connection.commit()
 
     async def list_modules(self, *, include_inactive: bool = False) -> list[dict[str, Any]]:
         query = "SELECT descriptor, state FROM module_definitions"
@@ -294,12 +344,13 @@ class RecordStore:
         status_code: int,
         latency_ms: float,
         request_id: str,
+        interaction_id: str | None = None,
     ) -> None:
         async with self._lock:
             self._connection.execute(
                 """INSERT INTO access_events
-                (event_id, user_id, method, route, status_code, latency_ms, request_id, occurred_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (event_id, user_id, method, route, status_code, latency_ms, request_id, interaction_id, occurred_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     str(uuid4()),
                     user_id,
@@ -308,10 +359,90 @@ class RecordStore:
                     status_code,
                     round(latency_ms, 2),
                     request_id,
+                    interaction_id,
                     datetime.now(UTC).isoformat(),
                 ),
             )
             self._connection.commit()
+
+
+
+    async def set_history_save_consent(
+        self, user_id: str, accepted: bool
+    ) -> None:
+        now = datetime.now(UTC).isoformat()
+        async with self._lock:
+            self._connection.execute(
+                """
+                INSERT INTO history_save_consents
+                    (user_id, consent_version, accepted_at, withdrawn_at, active)
+                VALUES (?, 'history-save-v2', ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    consent_version = excluded.consent_version,
+                    accepted_at = excluded.accepted_at,
+                    withdrawn_at = excluded.withdrawn_at,
+                    active = excluded.active
+                """,
+                (
+                    user_id,
+                    now if accepted else None,
+                    None if accepted else now,
+                    int(accepted),
+                ),
+            )
+            self._connection.commit()
+
+    async def has_history_save_consent(self, user_id: str) -> bool:
+        async with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT active FROM history_save_consents
+                WHERE user_id = ?
+                  AND consent_version = 'history-save-v2'
+                """,
+                (user_id,),
+            ).fetchone()
+        return bool(row and row["active"])
+
+    async def set_admin_history_consent(
+        self, user_id: str, accepted: bool
+    ) -> None:
+        now = datetime.now(UTC).isoformat()
+
+        async with self._lock:
+            self._connection.execute(
+                """
+                INSERT INTO admin_history_consents
+                    (user_id, consent_version, accepted_at, withdrawn_at, active)
+                VALUES (?, 'admin-history-v1', ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    consent_version = excluded.consent_version,
+                    accepted_at = excluded.accepted_at,
+                    withdrawn_at = excluded.withdrawn_at,
+                    active = excluded.active
+                """,
+                (
+                    user_id,
+                    now if accepted else None,
+                    None if accepted else now,
+                    int(accepted),
+                ),
+            )
+            self._connection.commit()
+
+    async def has_admin_history_consent(self, user_id: str) -> bool:
+        async with self._lock:
+            row = self._connection.execute(
+                """
+                SELECT active
+                FROM admin_history_consents
+                WHERE user_id = ?
+                  AND consent_version = 'admin-history-v1'
+                """,
+                (user_id,),
+            ).fetchone()
+
+        return bool(row and row["active"])
 
     async def create_interaction(
         self,
@@ -328,21 +459,38 @@ class RecordStore:
         status: str = "completed",
         force_save: bool = False,
     ) -> str | None:
-        always_save = force_save
-        save_hist = always_save or (policy is not None and policy.save_history)
-        imp_consent = policy is not None and policy.improvement_consent
-        if not save_hist and not imp_consent:
+        # Enforce stored consent on the server, not request headers.
+        stored_consent = await self.has_history_save_consent(user_id)
+
+        # A forced save must never bypass the user's consent.
+        save_hist = bool(
+            stored_consent
+            and (
+                force_save
+                or (policy is not None and policy.save_history)
+            )
+        )
+
+        # Research permission is independent but requires saved history.
+        imp_consent = bool(
+            save_hist
+            and policy is not None
+            and policy.improvement_consent
+        )
+
+        if not save_hist:
             return None
         now = datetime.now(UTC)
-        retention = now + timedelta(days=180 if imp_consent else 30)
+        retention = datetime(9999, 12, 31, tzinfo=UTC)
         next_id = interaction_id or str(uuid4())
         async with self._lock:
             self._connection.execute(
                 """INSERT OR REPLACE INTO inference_interactions
                 (interaction_id, user_id, module_id, query_text, answer_text, provider_id,
                  model_id, language, status, save_history, improvement_consent,
-                 retention_expires_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 retention_expires_at, created_at, updated_at,
+                 admin_history_visible, history_consent_version)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     next_id,
                     user_id,
@@ -358,26 +506,30 @@ class RecordStore:
                     retention.isoformat(),
                     now.isoformat(),
                     now.isoformat(),
+                    1 if (
+                        save_hist
+                        and policy is not None
+                        and policy.admin_history_visible
+                    ) else 0,
+                    "history-save-v2" if (
+                        save_hist
+                        and policy is not None
+                        and policy.admin_history_visible
+                    ) else None,
                 ),
             )
             self._connection.commit()
         return next_id
 
     async def purge_expired_interactions(self) -> int:
-        """Delete saved interactions after their retention period."""
-        async with self._lock:
-            cursor = self._connection.execute(
-                "DELETE FROM inference_interactions WHERE retention_expires_at <= ?",
-                (datetime.now(UTC).isoformat(),),
-            )
-            self._connection.commit()
-            return cursor.rowcount
+        """Automatic deletion is disabled."""
+        return 0
 
     async def list_interactions(
         self, user_id: str, *, module_id: str | None = None, limit: int = 100
     ) -> list[dict[str, Any]]:
-        query = "SELECT * FROM inference_interactions WHERE user_id = ? AND retention_expires_at > ?"
-        params: list[Any] = [user_id, datetime.now(UTC).isoformat()]
+        query = "SELECT * FROM inference_interactions WHERE user_id = ?"
+        params: list[Any] = [user_id]
         if module_id:
             query += " AND module_id = ?"
             params.append(module_id)
@@ -393,8 +545,8 @@ class RecordStore:
         query = ("SELECT interaction_id, user_id, module_id, provider_id, "
                  "model_id, language, status, save_history, "
                  "improvement_consent, created_at "
-                 "FROM inference_interactions WHERE retention_expires_at > ?")
-        params: list[Any] = [datetime.now(UTC).isoformat()]
+                 "FROM inference_interactions WHERE 1 = 1")
+        params: list[Any] = []
         if module_id:
             query += " AND module_id = ?"
             params.append(module_id)
@@ -404,13 +556,64 @@ class RecordStore:
             rows = self._connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
+    async def list_admin_recorded_io(
+        self, *, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        """Return retained, improvement-consented model input/output."""
+        query = """
+            SELECT interaction_id, user_id, module_id,
+                   query_text, answer_text, status, created_at
+            FROM inference_interactions
+            WHERE improvement_consent = 1
+              AND save_history = 1
+              AND admin_history_visible = 1
+              AND history_consent_version = 'history-save-v2'
+            ORDER BY created_at DESC
+            LIMIT ?
+        """
+        async with self._lock:
+            rows = self._connection.execute(
+                query, (min(limit, 100),)
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     async def list_admin_api_history(
         self, *, limit: int = 100
     ) -> list[dict[str, Any]]:
         query = (
-            "SELECT event_id, user_id, method, route, status_code, "
-            "latency_ms, occurred_at FROM access_events WHERE " + self.main_inference_filter() + " "
-            "ORDER BY occurred_at DESC LIMIT ?"
+            """SELECT a.event_id, a.user_id, a.method, a.route,
+                      a.status_code, a.latency_ms, a.occurred_at,
+                      a.request_id,
+                      CASE
+                        WHEN a.route LIKE '%/tts/%' THEN 'TTS'
+                        WHEN a.route LIKE '%/asr/%' THEN 'ASR'
+                        WHEN a.route LIKE '%/ocr/%' THEN 'OCR'
+                        WHEN a.route LIKE '%/chat/%' THEN 'Chat'
+                        WHEN a.route LIKE '%/completion/%' THEN 'Completion'
+                        WHEN a.route LIKE '%/news/classify%' THEN 'News Classification'
+                        WHEN a.route LIKE '%/news/generate-headline%' THEN 'News Headline'
+                        ELSE 'Other'
+                      END AS service,
+                      CASE WHEN i.save_history = 1
+                           THEN 1 ELSE 0 END AS history_saved,
+                      CASE WHEN i.improvement_consent = 1
+                           THEN 1 ELSE 0 END AS research_use,
+                      CASE WHEN i.admin_history_visible = 1
+                                 AND i.save_history = 1
+                                 AND i.history_consent_version = 'history-save-v2'
+                           THEN i.query_text ELSE NULL END AS input_text,
+                      CASE WHEN i.admin_history_visible = 1
+                                 AND i.save_history = 1
+                                 AND i.history_consent_version = 'history-save-v2'
+                           THEN i.answer_text ELSE NULL END AS output_text
+               FROM access_events a
+               LEFT JOIN inference_interactions i
+                 ON i.interaction_id = a.interaction_id
+                AND i.user_id = a.user_id
+               LEFT JOIN admin_history_consents c
+                 ON c.user_id = i.user_id
+               WHERE """ + self.main_inference_filter() +
+               " ORDER BY a.occurred_at DESC LIMIT ?"
         )
         async with self._lock:
             rows = self._connection.execute(
@@ -493,6 +696,8 @@ class RecordStore:
         return feedback_id
 
     @staticmethod
+
+
     def main_inference_filter() -> str:
         routes = (
             "/api/v1/tts/jobs",
@@ -503,6 +708,7 @@ class RecordStore:
             "/api/v1/completion/completions",
             "/api/v1/news/classify",
             "/api/v1/news/generate-headline",
+            "/api/v1/ocr/process",
         )
         quoted = ", ".join(chr(39) + route + chr(39) for route in routes)
         return "method = " + chr(39) + "POST" + chr(39) + " AND route IN (" + quoted + ")"
@@ -566,8 +772,18 @@ class RecordStore:
         return output.getvalue()
 
 
-def policy_from_headers(save_history: str | None, improvement_consent: str | None) -> RecordingPolicy:
+def policy_from_headers(
+    save_history: str | None,
+    improvement_consent: str | None,
+    admin_history_consent: str | None = None,
+    admin_consent_version: str | None = None,
+) -> RecordingPolicy:
     return RecordingPolicy(
         save_history=(save_history or "false").lower() == "true",
         improvement_consent=(save_history or "false").lower() == "true" and (improvement_consent or "false").lower() == "true",
+        admin_history_visible=(
+            (save_history or "false").lower() == "true"
+            and (admin_history_consent or "false").lower() == "true"
+            and admin_consent_version == "history-save-v2"
+        ),
     )

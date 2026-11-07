@@ -7,7 +7,7 @@ import { ResultFeedback } from "./ResultFeedback";
 import { Status } from "./Status";
 
 const AVAILABLE_MODELS = [
-  { id: "slt-trilingual-1b:latest", name: "slt-trilingual-1b:latest (SLT Trilingual 1B)" },
+  { id: "slt-trilingual:latest", name: "slt-trilingual:latest (SLT Trilingual 1B)" },
 ];
 
 export function CompletionPanel({
@@ -21,7 +21,7 @@ export function CompletionPanel({
   preferences: RecordPreferences;
   onUsed: (interactionId?: string) => void;
 }) {
-  const [model, setModel] = useState("slt-trilingual-1b:latest");
+  const [model, setModel] = useState("slt-trilingual:latest");
   const [input, setInput] = useState("");
   const [result, setResult] = useState<CompletionResult>();
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");

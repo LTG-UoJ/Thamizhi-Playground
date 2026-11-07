@@ -9,7 +9,7 @@ import io
 import wave
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Header, HTTPException, Request, UploadFile
 
 from app.core.dependencies import Container, get_container
 from app.core.security import Actor, consented_actor
@@ -22,26 +22,40 @@ router = APIRouter(prefix="/tts", tags=["tts"])
 @router.post("/jobs", response_model=JobAccepted, status_code=202)
 async def create_tts_job(
     request: TTSRequest,
+    http_request: Request,
     background: BackgroundTasks,
     actor: Annotated[Actor, Depends(consented_actor)],
     container: Annotated[Container, Depends(get_container)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)],
     save_history: Annotated[str | None, Header(alias="X-Save-History")] = None,
     improvement_consent: Annotated[str | None, Header(alias="X-Improvement-Consent")] = None,
+    admin_history_consent: Annotated[str | None, Header(alias="X-Admin-History-Consent")] = None,
+    admin_consent_version: Annotated[str | None, Header(alias="X-Admin-Consent-Version")] = None,
 ) -> dict[str, str]:
     route = "POST:/tts/jobs"
     fingerprint = container.idempotency.fingerprint(request.model_dump())
     replay = await container.idempotency.reserve(actor.user_id, route, idempotency_key, fingerprint)
     if replay:
+        http_request.state.interaction_id = replay["job_id"]
         return replay
     try:
         response = await container.tts.create(
             request,
             actor.user_id,
             background,
-            policy_from_headers(save_history, improvement_consent),
+            policy_from_headers(
+                save_history,
+                improvement_consent,
+                (
+                    admin_history_consent
+                    if await container.records.has_history_save_consent(actor.user_id)
+                    else None
+                ),
+                admin_consent_version,
+            ),
         )
         await container.idempotency.complete(actor.user_id, route, idempotency_key, response)
+        http_request.state.interaction_id = response["job_id"]
         return response
     except Exception:
         await container.idempotency.forget(actor.user_id, route, idempotency_key)
@@ -50,6 +64,7 @@ async def create_tts_job(
 
 @router.post("/jobs/upload", response_model=JobAccepted, status_code=202)
 async def create_tts_job_with_reference(
+    http_request: Request,
     background: BackgroundTasks,
     actor: Annotated[Actor, Depends(consented_actor)],
     container: Annotated[Container, Depends(get_container)],
@@ -60,6 +75,8 @@ async def create_tts_job_with_reference(
     voice: Annotated[str, Form()] = "male",
     save_history: Annotated[str | None, Header(alias="X-Save-History")] = None,
     improvement_consent: Annotated[str | None, Header(alias="X-Improvement-Consent")] = None,
+    admin_history_consent: Annotated[str | None, Header(alias="X-Admin-History-Consent")] = None,
+    admin_consent_version: Annotated[str | None, Header(alias="X-Admin-Consent-Version")] = None,
 ) -> dict[str, str]:
     request = TTSRequest(text=text, language=language, voice=voice)
     audio = await reference_wav.read(10 * 1024 * 1024 + 1)
@@ -82,18 +99,29 @@ async def create_tts_job_with_reference(
         actor.user_id, route, idempotency_key, fingerprint
     )
     if replay:
+        http_request.state.interaction_id = replay["job_id"]
         return replay
     try:
         response = await container.tts.create(
             request,
             actor.user_id,
             background,
-            policy_from_headers(save_history, improvement_consent),
+            policy_from_headers(
+                save_history,
+                improvement_consent,
+                (
+                    admin_history_consent
+                    if await container.records.has_history_save_consent(actor.user_id)
+                    else None
+                ),
+                admin_consent_version,
+            ),
             reference_wav=audio,
         )
         await container.idempotency.complete(
             actor.user_id, route, idempotency_key, response
         )
+        http_request.state.interaction_id = response["job_id"]
         return response
     except Exception:
         await container.idempotency.forget(

@@ -39,12 +39,12 @@ export function ChatPanel({ locale, enabled, preferences, onUsed }: { locale: Lo
     <section className="module-panel chat-panel" aria-labelledby="chat-title">
       <div className="panel-heading"><div><span className="step">03</span><h2 id="chat-title">{locale === "en" ? "Small chat" : "சிறிய உரையாடல்"}</h2></div><span className="chip">CHAT</span></div>
       <div className="conversation" aria-live="polite">
-        {messages.length === 0 ? <div className="empty-chat"><span>✦</span><p>{locale === "en" ? "Ask a focused question in English or Tamil." : "தமிழில் அல்லது ஆங்கிலத்தில் ஒரு கேள்வியைக் கேளுங்கள்."}</p></div> : messages.map((message, index) => <div key={`${message.role}-${index}`} className={`bubble ${message.role}`}><span>{message.role === "user" ? (locale === "en" ? "You" : "நீங்கள்") : "AI"}</span><p>{message.content}</p></div>)}
+        {messages.length === 0 ? <div className="empty-chat"><span>✦</span><p>{locale === "en" ? "Small Chat is currently under development and will be available soon." : "சிறிய உரையாடல் வசதி தற்போது உருவாக்கத்தில் உள்ளது. விரைவில் பயன்பாட்டிற்கு வரும்."}</p></div> : messages.map((message, index) => <div key={`${message.role}-${index}`} className={`bubble ${message.role}`}><span>{message.role === "user" ? (locale === "en" ? "You" : "நீங்கள்") : "AI"}</span><p>{message.content}</p></div>)}
       </div>
       <form className="chat-form" onSubmit={send}>
         <label className="sr-only" htmlFor="chat-input">{locale === "en" ? "Message" : "செய்தி"}</label>
-        <textarea id="chat-input" rows={3} value={input} onChange={(event) => setInput(event.target.value)} placeholder={locale === "en" ? "Write a message…" : "ஒரு செய்தியை எழுதுங்கள்…"} />
-        <button className="primary send" disabled={!enabled || !input.trim() || state === "busy"}>{locale === "en" ? "Send" : "அனுப்பு"}<span aria-hidden="true">→</span></button>
+        <textarea disabled id="chat-input" rows={3} value={input} onChange={(event) => setInput(event.target.value)} placeholder={locale === "en" ? "Write a message…" : "ஒரு செய்தியை எழுதுங்கள்…"} />
+        <button className="primary send" disabled={true}>{locale === "en" ? "Send" : "அனுப்பு"}<span aria-hidden="true">→</span></button>
       </form>
       <Status state={state} message={status} />
       <ResultFeedback interactionId={interactionId} locale={locale} />

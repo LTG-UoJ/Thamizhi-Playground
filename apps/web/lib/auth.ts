@@ -9,7 +9,7 @@ export function apiBase(): string {
   return "http://localhost:8002";
 }
 
-export const apiUrl = (path: string): string => `${apiBase()}/api/v1${path}`;
+export const apiUrl = (path: string): string => `${apiBase()}${path}`;
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
